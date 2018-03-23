@@ -4,7 +4,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.jingdianbao.entity.*;
 import com.jingdianbao.service.impl.DmpService;
 import com.jingdianbao.service.impl.HttpCrawlerService;
-import com.netease.nbot.entity.*;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;

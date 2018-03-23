@@ -17,6 +17,7 @@ public class DmpResult {
 
     private int coverCount;
 
+    private String img;
 
     public String errorMessage = "";
 
@@ -50,7 +51,7 @@ public class DmpResult {
 
     public void setSku(String sku) {
         this.sku = sku;
-        this.url = "https://item.m.jd.com/product/" + sku + ".html";
+        this.url = "https://item.jd.com/" + sku + ".html";
     }
 
     public String getBrand() {
@@ -75,5 +76,21 @@ public class DmpResult {
 
     public void setCoverCount(int coverCount) {
         this.coverCount = coverCount;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public String getImg() {
+        return img;
+    }
+
+    public void setImg(String img) {
+        this.img = img;
     }
 }
