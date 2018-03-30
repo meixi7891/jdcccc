@@ -5,6 +5,8 @@ import com.jingdianbao.entity.*;
 import com.jingdianbao.service.impl.DmpService;
 import com.jingdianbao.service.impl.HttpCrawlerService;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -24,6 +26,8 @@ public class CrawlerController {
     @Autowired
     private DmpService dmpService;
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerController.class);
+
     @RequestMapping("/search")
     @ResponseBody
     public JSONObject search(@RequestParam(value = "source", required = false, defaultValue = "") String source,
@@ -41,6 +45,7 @@ public class CrawlerController {
             jsonObject.put("code", 0);
             jsonObject.put("message", "抓取成功");
         } catch (Exception e) {
+            LOGGER.error("", e);
             jsonObject.put("code", -1);
             jsonObject.put("message", "抓取失败");
         }
@@ -98,9 +103,23 @@ public class CrawlerController {
                           @RequestParam(value = "password", required = false, defaultValue = "") String password,
                           @RequestParam(value = "sku", required = false, defaultValue = "") String sku) {
         DmpRequest dmpRequest = new DmpRequest(userName, password, sku);
-        DmpResult dmpResult = dmpService.crawl(dmpRequest);
         JSONObject jsonObject = new JSONObject();
+        DmpResult dmpResult = dmpService.crawlHttp(dmpRequest);
         jsonObject.put("result", dmpResult);
+        return jsonObject;
+    }
+
+    @RequestMapping("/loginDmp")
+    @ResponseBody
+    public JSONObject loginDmp(@RequestParam(value = "userName", required = false, defaultValue = "") String userName,
+                               @RequestParam(value = "password", required = false, defaultValue = "") String password) {
+        DmpRequest dmpRequest = new DmpRequest(userName, password, "");
+        JSONObject jsonObject = new JSONObject();
+        if (dmpService.loginHttp(dmpRequest)) {
+            jsonObject.put("result", 0);
+        } else {
+            jsonObject.put("result", -1);
+        }
         return jsonObject;
     }
 }

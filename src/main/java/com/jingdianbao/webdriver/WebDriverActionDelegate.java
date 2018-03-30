@@ -3,13 +3,11 @@ package com.jingdianbao.webdriver;
 import org.openqa.selenium.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import sun.misc.BASE64Encoder;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.Set;
 
@@ -26,6 +24,8 @@ public class WebDriverActionDelegate {
             "document.body.appendChild(a);\n" +
             "a.click();";
 
+
+    private BASE64Encoder encoder = new sun.misc.BASE64Encoder();
     /**
      * @param driver
      * @param url
@@ -134,7 +134,7 @@ public class WebDriverActionDelegate {
         }
     }
 
-    public File takeScreenShotInFrame(WebDriver driver, WebElement imageElement, String imageType,  Point frameLocation) {
+    public File takeScreenShotInFrame(WebDriver driver, WebElement imageElement, String imageType, Point frameLocation) {
         try {
             File screen = ((TakesScreenshot) driver)
                     .getScreenshotAs(FILE);
@@ -149,6 +149,31 @@ public class WebDriverActionDelegate {
                     rect.height);
             ImageIO.write(dest, imageType, screen);
             return screen;
+        } catch (WebDriverException e) {
+            e.printStackTrace();
+            return null;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public String takeScreenShotInFrameBase64(WebDriver driver, WebElement imageElement, String imageType, Point frameLocation) {
+        try {
+            File screen = ((TakesScreenshot) driver)
+                    .getScreenshotAs(FILE);
+            Point p = imageElement.getLocation();
+            int width = imageElement.getSize().getWidth();
+            int height = imageElement.getSize().getHeight();
+            java.awt.Rectangle rect = new java.awt.Rectangle(width, height);
+            BufferedImage img = null;
+            img = ImageIO.read(screen);
+            BufferedImage dest = img.getSubimage(p.getX() + frameLocation.getX(), p.getY() + frameLocation.getY(), rect.width,
+                    rect.height);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(dest, "png", baos);
+            byte[] bytes = baos.toByteArray();
+            return encoder.encodeBuffer(bytes).trim();
         } catch (WebDriverException e) {
             e.printStackTrace();
             return null;

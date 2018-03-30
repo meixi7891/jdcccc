@@ -1,15 +1,19 @@
 package com.jingdianbao.service.impl;
 
+import ch.qos.logback.core.net.SyslogOutputStream;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.jingdianbao.entity.SearchCursor;
 import com.jingdianbao.entity.SearchRequest;
 import com.jingdianbao.entity.SearchResult;
 import com.jingdianbao.http.HttpClientFactory;
 import com.jingdianbao.service.CrawlerService;
+import com.jingdianbao.util.CookieUtil;
 import com.jingdianbao.webdriver.WebDriverBuilder;
 import com.jingdianbao.entity.Category;
 import com.jingdianbao.webdriver.WebDriverActionDelegate;
+import org.apache.commons.io.FileUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.CookieStore;
 import org.apache.http.client.config.RequestConfig;
@@ -24,6 +28,9 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.chrome.ChromeDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +38,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URLDecoder;
@@ -46,6 +54,7 @@ public class HttpCrawlerService implements CrawlerService {
 
     @Autowired
     private WebDriverBuilder webDriverBuilder;
+
     @Autowired
     private WebDriverActionDelegate webDriverActionDelegate;
 
@@ -88,119 +97,264 @@ public class HttpCrawlerService implements CrawlerService {
             String pa = "<li\\s+class=\"gl-item(\\s+gl-item-presell)?\"\\s+data-sku=\"\\d+\"\\s+data-spu=\"\\d+\" data-pid=\"\\d+\">|<li\\s+data-sku=\"\\d+\"\\s+class=\"gl-item(\\s+gl-item-presell)?\">";
             Pattern p = Pattern.compile(pa);
             Pattern skuPattern = Pattern.compile("data-sku=\"(\\d+)\"");
+            Pattern pidPattern = Pattern.compile("data-pid=\"(\\d+)\"");
             RequestConfig requestConfig = RequestConfig.custom()
                     .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
                     .setSocketTimeout(5000).build();
             CookieStore cookieStore = new BasicCookieStore();
-            CloseableHttpClient httpClient = HttpClientFactory.getHttpClient(cookieStore);
+            CookieUtil.loadCookie("search", "PC", cookieStore);
+            CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
             int pageTotal = 0;
-            try {
-                HttpGet httpGet = new HttpGet(refer);
-                httpGet.setHeader("Referer", refer);
-                httpGet.setConfig(requestConfig);
-                CloseableHttpResponse response = httpClient.execute(httpGet);
-                BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "gbk"));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line);
-                }
-                reader.close();
-                String result = sb.toString();
-                Document document = Jsoup.parse(result);
-                String pageStr = document.select("div[id=J_topPage]>span>i").text();
-                pageTotal = Integer.parseInt(pageStr);
-            } catch (Exception e) {
-                LOGGER.error("", e);
+
+            HttpGet httpGet = new HttpGet(refer);
+            httpGet.addHeader("Referer", refer);
+            httpGet.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+            httpGet.addHeader("Host", "search.jd.com");
+            httpGet.addHeader("Upgrade-Insecure-Requests", "1");
+            httpGet.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
+            httpGet.setConfig(requestConfig);
+            CloseableHttpResponse response = httpClient.execute(httpGet);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
             }
+            reader.close();
+            String result = sb.toString();
+            Document document = Jsoup.parse(result);
+            String pageStr = document.select("div[id=J_topPage]>span>i").text();
+            pageTotal = Integer.parseInt(pageStr);
             int rank = 0;
-            out:
-            for (int i = 0; i < pageTotal; i++) {
-                int page = i;
-                int position = 0;
-                for (int j = 1; j <= 2; j++) {
-                    httpClient = HttpClientFactory.getHttpClient(cookieStore);
-                    String urlStr = url + "&page=" + (i * 2 + j) + "&s=" + s;
-                    String result = get(urlStr, refer, requestConfig, httpClient);
-                    Document document = Jsoup.parse(result);
-                    httpClient.close();
-                    String[] ss = result.split(pa, -1);
-                    Set<Integer> adIndexSet = new HashSet<>();
-                    for (int m = 0; m < ss.length; m++) {
-                        if (ss[m].isEmpty()) {
-                            continue;
-                        }
-                        System.out.println(ss[m]);
-                        if (ss[m].contains("广告</span>")) {
-                            adIndexSet.add(m);
+            int position = 0;
+            Elements elements = document.select("li[class~=gl-item]");
+            sb = new StringBuilder();
+            //第一页第一屏
+            for (Element e : elements) {
+                position++;
+                sb.append(e.attr("data-pid")).append(",");
+                if (e.select("span[class=p-promo-flag]").isEmpty()) {
+                    s++;
+                    rank++;
+                    if ((request.getType().equals("goods") && sku.equals(e.attr("data-sku"))) || (request.getType().equals("shop") && !e.select("a[class~=curr-shop]").isEmpty() && e.select("a[class~=curr-shop]").text().contains(request.getShop()))) {
+                        SearchResult searchResult = new SearchResult();
+                        searchResult.setPage(1);
+                        searchResult.setPos(position);
+                        searchResult.setRank(rank);
+                        searchResult.setType(request.getType());
+                        searchResult.setKeyword(request.getKeyword());
+                        searchResult.setSku(e.attr("data-sku"));
+                        if (request.getSource().equals("PC")) {
+                            searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
                         } else {
-                            s++;
+                            searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                        }
+                        Elements e1 = e.select("div[class=p-img] img");
+                        if (e1.attr("src") != null && !e1.attr("src").isEmpty()) {
+                            searchResult.setImg(e1.attr("src"));
+                        } else {
+                            searchResult.setImg(e1.attr("data-lazy-img"));
+                        }
+                        resultList.add(searchResult);
+                        if (request.getType().equals("goods") || resultList.size() >= 3) {
+                            resultList.forEach(sr -> {
+                                crawlSkuDetail(sr);
+                                crawlComment(sr);
+                                crawlFoldComments(sr);
+                            });
+                            return resultList;
                         }
                     }
-                    int index = 0;
-                    Matcher matcher = p.matcher(result);
-                    while (matcher.find()) {
-                        index++;
-                        position++;
-                        if (!adIndexSet.contains(index)) {
-                            rank++;
+                }
+            }
+            //第一页第二屏
+            httpClient = HttpClientFactory.getHttpClient();
+            Map<String, String> header = new HashMap<>();
+            header.put("Cookie", CookieUtil.getCookieStr(cookieStore));
+            header.put("Host", "search.jd.com");
+            header.put("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
+            String urlStr = url + "&page=" + 2 + "&s=" + s;
+            if (!(sb.length() == 0)) {
+                urlStr = urlStr + "&show_items=" + sb.substring(0, sb.length() - 1);
+            }
+            result = get(urlStr, refer, requestConfig, httpClient, header);
+            document = Jsoup.parse(result);
+            httpClient.close();
+            sb = new StringBuilder();
+            elements = document.select("li[class~=gl-item]");
+            for (Element e : elements) {
+                position++;
+                sb.append(e.attr("data-pid")).append(",");
+                if (e.select("span[class=p-promo-flag]").isEmpty()) {
+                    s++;
+                    rank++;
+                    if ((request.getType().equals("goods") && sku.equals(e.attr("data-sku"))) || (request.getType().equals("shop") && !e.select("a[class~=curr-shop]").isEmpty() && e.select("a[class~=curr-shop]").text().contains(request.getShop()))) {
+                        SearchResult searchResult = new SearchResult();
+                        searchResult.setPage(1);
+                        searchResult.setPos(position);
+                        searchResult.setRank(rank);
+                        searchResult.setType(request.getType());
+                        searchResult.setKeyword(request.getKeyword());
+                        searchResult.setSku(e.attr("data-sku"));
+                        if (request.getSource().equals("PC")) {
+                            searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
+                        } else {
+                            searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
                         }
-                        String skuLine = matcher.group();
-                        if (request.getType().equals("goods") && skuLine.contains("data-sku=\"" + sku + "\"")) {
-                            SearchResult searchResult = new SearchResult();
-                            searchResult.setPage(page + 1);
-                            searchResult.setPos(position);
-                            searchResult.setRank(rank);
-                            searchResult.setType(request.getType());
-                            searchResult.setSku(String.valueOf(sku));
-                            searchResult.setKeyword(request.getKeyword());
-                            if (request.getSource().equals("PC")) {
-                                searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
-                            } else {
-                                searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-                            }
-                            Elements e = document.select("img[data-sku=" + searchResult.getSku() + "]");
-                            if (e.attr("src") != null && !e.attr("src").isEmpty()) {
-                                searchResult.setImg(e.attr("src"));
-                            } else {
-                                searchResult.setImg(e.attr("data-lazy-img"));
-                            }
-                            resultList.add(searchResult);
-                            if (request.getType().equals("goods") || resultList.size() == 10) {
-                                break out;
-                            }
-                        } else if (request.getType().equals("shop")) {
-                            Matcher skuMatcher = skuPattern.matcher(skuLine);
-                            if (skuMatcher.find()) {
-                                String currentSku = skuMatcher.group(1);
-                                Elements e = document.select("li[data-sku=" + currentSku + "] div[class=p-shop]");
-                                if (e.text().contains(request.getKeyword())) {
-                                    SearchResult searchResult = new SearchResult();
-                                    searchResult.setPage(page + 1);
-                                    searchResult.setPos(position);
-                                    searchResult.setRank(rank);
-                                    searchResult.setType(request.getType());
-                                    searchResult.setSku(String.valueOf(currentSku));
-                                    searchResult.setKeyword(request.getKeyword());
-                                    if (request.getSource().equals("PC")) {
-                                        searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
-                                    } else {
-                                        searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-                                    }
-                                    Elements imageNode = document.select("img[data-sku=" + searchResult.getSku() + "]");
-                                    if (imageNode.attr("src") != null && !imageNode.attr("src").isEmpty()) {
-                                        searchResult.setImg(imageNode.attr("src"));
-                                    } else {
-                                        searchResult.setImg(imageNode.attr("data-lazy-img"));
-                                    }
-                                    resultList.add(searchResult);
-                                    if (resultList.size() == 10) {
-                                        break out;
-                                    }
+                        Elements e1 = e.select("div[class=p-img] img");
+                        if (e1.attr("src") != null && !e1.attr("src").isEmpty()) {
+                            searchResult.setImg(e1.attr("src"));
+                        } else {
+                            searchResult.setImg(e1.attr("data-lazy-img"));
+                        }
+                        resultList.add(searchResult);
+                        if (request.getType().equals("goods") || resultList.size() >= 3) {
+                            resultList.forEach(sr -> {
+                                crawlSkuDetail(sr);
+                                crawlComment(sr);
+                                crawlFoldComments(sr);
+                            });
+                            return resultList;
+                        }
+                    }
+                }
+            }
+            //第二页到第n页
+            out:
+            for (int i = 1; i < pageTotal; i++) {
+                int page = i;
+                position = 0;
+                for (int j = 1; j <= 2; j++) {
+                    httpClient = HttpClientFactory.getHttpClient();
+                    urlStr = url + "&page=" + (i * 2 + j) + "&s=" + s;
+                    if (!(sb.length() == 0)) {
+                        urlStr = urlStr + "&show_items=" + sb.substring(0, sb.length() - 1);
+                    }
+                    result = get(urlStr, refer, requestConfig, httpClient, header);
+                    document = Jsoup.parse(result);
+                    httpClient.close();
+                    sb = new StringBuilder();
+                    elements = document.select("li[class~=gl-item]");
+                    for (Element e : elements) {
+                        position++;
+                        sb.append(e.attr("data-pid")).append(",");
+                        if (e.select("span[class=p-promo-flag]").isEmpty()) {
+                            s++;
+                            rank++;
+
+                            if ((request.getType().equals("goods") && sku.equals(e.attr("data-sku"))) || (request.getType().equals("shop") && !e.select("a[class~=curr-shop]").isEmpty() && e.select("a[class~=curr-shop]").text().contains(request.getShop()))) {
+                                SearchResult searchResult = new SearchResult();
+                                searchResult.setPage(page + 1);
+                                searchResult.setPos(position);
+                                searchResult.setRank(rank);
+                                searchResult.setType(request.getType());
+                                searchResult.setKeyword(request.getKeyword());
+                                searchResult.setSku(e.attr("data-sku"));
+                                if (request.getSource().equals("PC")) {
+                                    searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
+                                } else {
+                                    searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                                }
+                                Elements e1 = e.select("div[class=p-img] img");
+                                if (e1.attr("src") != null && !e1.attr("src").isEmpty()) {
+                                    searchResult.setImg(e1.attr("src"));
+                                } else {
+                                    searchResult.setImg(e1.attr("data-lazy-img"));
+                                }
+                                resultList.add(searchResult);
+                                if (request.getType().equals("goods") || resultList.size() >= 3 || i == 50) {
+                                    resultList.forEach(sr -> {
+                                        crawlSkuDetail(sr);
+                                        crawlComment(sr);
+                                        crawlFoldComments(sr);
+                                    });
+                                    return resultList;
                                 }
                             }
                         }
                     }
+//                    String[] ss = result.split(pa, -1);
+//                    Set<Integer> adIndexSet = new HashSet<>();
+//                    for (int m = 0; m < ss.length; m++) {
+//                        if (ss[m].isEmpty()) {
+//                            continue;
+//                        }
+//                        System.out.println(ss[m]);
+//                        if (ss[m].contains("广告</span>")) {
+//                            adIndexSet.add(m);
+//                        } else {
+//                            s++;
+//                        }
+//                    }
+//                    int index = 0;
+//                    Matcher matcher = p.matcher(result);
+//                    while (matcher.find()) {
+//                        index++;
+//                        position++;
+//                        if (!adIndexSet.contains(index)) {
+//                            rank++;
+//                        }
+//                        String skuLine = matcher.group();
+//                        Matcher pidMatcher = pidPattern.matcher(skuLine);
+//                        if (pidMatcher.find()) {
+//                            String currentPid = pidMatcher.group(1);
+//                            sb.append(currentPid).append(",");
+//                        }
+//                        if (request.getType().equals("goods") && skuLine.contains("data-sku=\"" + sku + "\"")) {
+//                            SearchResult searchResult = new SearchResult();
+//                            searchResult.setPage(page + 1);
+//                            searchResult.setPos(position);
+//                            searchResult.setRank(rank);
+//                            searchResult.setType(request.getType());
+//                            searchResult.setSku(String.valueOf(sku));
+//                            searchResult.setKeyword(request.getKeyword());
+//                            if (request.getSource().equals("PC")) {
+//                                searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
+//                            } else {
+//                                searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+//                            }
+//                            Elements e1 = e.select("div[class=p-img] img");
+//                            if (e1.attr("src") != null && !e1.attr("src").isEmpty()) {
+//                                searchResult.setImg(e1.attr("src"));
+//                            } else {
+//                                searchResult.setImg(e1.attr("data-lazy-img"));
+//                            }
+//                            resultList.add(searchResult);
+//                            if (request.getType().equals("goods")) {
+//                                break out;
+//                            }
+//                        } else if (request.getType().equals("shop")) {
+//                            Matcher skuMatcher = skuPattern.matcher(skuLine);
+//                            if (skuMatcher.find()) {
+//                                String currentSku = skuMatcher.group(1);
+//                                Elements e = document.select("li[data-sku=" + currentSku + "] div[class=p-shop]");
+//                                if (e.text().contains(request.getKeyword())) {
+//                                    SearchResult searchResult = new SearchResult();
+//                                    searchResult.setPage(page + 1);
+//                                    searchResult.setPos(position);
+//                                    searchResult.setRank(rank);
+//                                    searchResult.setType(request.getType());
+//                                    searchResult.setSku(String.valueOf(currentSku));
+//                                    searchResult.setKeyword(request.getKeyword());
+//                                    if (request.getSource().equals("PC")) {
+//                                        searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
+//                                    } else {
+//                                        searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+//                                    }
+//                                    Elements imageNode = document.select("img[data-sku=" + searchResult.getSku() + "]");
+//                                    if (imageNode.attr("src") != null && !imageNode.attr("src").isEmpty()) {
+//                                        searchResult.setImg(imageNode.attr("src"));
+//                                    } else {
+//                                        searchResult.setImg(imageNode.attr("data-lazy-img"));
+//                                    }
+//                                    resultList.add(searchResult);
+//                                    if (resultList.size() >= 10) {
+//                                        break out;
+//                                    }
+//                                }
+//                            }
+//                        }
+                }
 
 
 //                    Document doc = Jsoup.parse(result);
@@ -225,141 +379,191 @@ public class HttpCrawlerService implements CrawlerService {
 //                        }
 //
 //                    }
-                }
             }
+
         } catch (IOException e) {
-            e.printStackTrace();
+            LOGGER.error("", e);
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.error("", e);
         }
-        resultList.forEach(searchResult -> {
-            crawlSkuDetail(searchResult);
-            crawlComment(searchResult);
-            crawlFoldComments(searchResult);
+        resultList.forEach(sr -> {
+            crawlSkuDetail(sr);
+            crawlComment(sr);
+            crawlFoldComments(sr);
         });
         return resultList;
     }
 
-//    private List<SearchResult> searchGoods(SearchRequest request) {
-//        List<SearchResult> resultList = new ArrayList<>();
-//        ChromeDriver webDriver = webDriverBuilder.getWebDriver();
-//        try {
-//            String pvid = uuid();
-//            String keyword = URLEncoder.encode(request.getKeyword(), "utf-8");
-//            String refer = "https://search.jd.com/Search?keyword=" + keyword + "&enc=utf-8&pvid=" + pvid;
-//
-//            webDriver.get(refer);
-//            if (request.getSortType() != null && !"0".equals(request.getSortType())) {
-//                webDriver.executeScript("SEARCH.sort('" + request.getSortType() + "')");
-//            }
-//            String sku = request.getSku();
-//            int rank = 0;
-//            WebElement element = webDriver.findElementByXPath("//span[@class='p-skip']/input[@class='input-txt']");
-//            int elementPosition = element.getLocation().getY() - 100;
-//            String js = String.format("window.scroll(0, %s)", elementPosition);
-//            webDriver.executeScript(js);
-//            sleep(1000);
-//
-//            int page = 1;
-//            List<WebElement> elementList = webDriver.findElementsByCssSelector("li[class~=gl-item]");
-//            for (int i = 0; i < elementList.size(); i++) {
-//                WebElement e = elementList.get(i);
-//                if (e.findElements(By.cssSelector("span[class=p-promo-flag]")).isEmpty()) {
-//                    rank++;
-//                }
-//                if ((request.getType().equals("goods") && sku.equals(e.getAttribute("data-sku"))) || (request.getType().equals("shop") && !e.findElements(By.cssSelector("a[class~=curr-shop]")).isEmpty() && e.findElement(By.cssSelector("a[class~=curr-shop]")).getText().contains(request.getShop()))) {
-//                    SearchResult searchResult = new SearchResult();
-//                    searchResult.setPage(page);
-//                    searchResult.setPos(i + 1);
-//                    searchResult.setRank(rank);
-//                    searchResult.setType(request.getType());
-//                    searchResult.setKeyword(request.getKeyword());
-//                    searchResult.setSku(e.getAttribute("data-sku"));
-//                    if (request.getSource().equals("PC")) {
-//                        searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
-//                    } else {
-//                        searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-//                    }
-//                    WebElement imgNode = e.findElement(By.tagName("img"));
-//                    if (imgNode.getAttribute("src") != null && !imgNode.getAttribute("src").isEmpty()) {
-//                        searchResult.setImg(imgNode.getAttribute("src"));
-//                    } else {
-//                        searchResult.setImg(imgNode.getAttribute("data-lazy-img"));
-//                    }
-//                    resultList.add(searchResult);
-//                    if (request.getType().equals("goods") || resultList.size() == 10) {
-//                        break;
-//                    }
-//                }
-//            }
-//
-//            String pageStr = webDriver.findElementByCssSelector("#J_topPage i").getText();
-//            int pageTotal = Integer.parseInt(pageStr);
-//            out:
-//            for (page = 2; page <= pageTotal; page++) {
-//                webDriver.findElementByXPath("//a[@class='pn-next']").click();
-//                sleep(1000);
-//                webDriver.executeScript(js);
-//                sleep(100);
-//                elementList = webDriver.findElementsByCssSelector("li[class~=gl-item]");
-//                for (int i = 0; i < elementList.size(); i++) {
-//                    WebElement e = elementList.get(i);
-//                    if (e.findElements(By.cssSelector("span[class=p-promo-flag]")).isEmpty()) {
-//                        rank++;
-//                    }
-//                    if ((request.getType().equals("goods") && sku.equals(e.getAttribute("data-sku"))) || (request.getType().equals("shop") && !e.findElements(By.cssSelector("a[class~=curr-shop]")).isEmpty() && e.findElement(By.cssSelector("a[class~=curr-shop]")).getText().contains(request.getShop()))) {
-//                        SearchResult searchResult = new SearchResult();
-//                        searchResult.setPage(page);
-//                        searchResult.setPos(i + 1);
-//                        searchResult.setRank(rank);
-//                        searchResult.setType(request.getType());
-//                        searchResult.setKeyword(request.getKeyword());
-//                        searchResult.setSku(e.getAttribute("data-sku"));
-//                        if (request.getSource().equals("PC")) {
-//                            searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
-//                        } else {
-//                            searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-//                        }
-//                        WebElement imgNode = e.findElement(By.tagName("img"));
-//                        if (imgNode.getAttribute("src") != null && !imgNode.getAttribute("src").isEmpty()) {
-//                            searchResult.setImg(imgNode.getAttribute("src"));
-//                        } else {
-//                            searchResult.setImg(imgNode.getAttribute("data-lazy-img"));
-//                        }
-//                        resultList.add(searchResult);
-//                        if (request.getType().equals("goods") || resultList.size() == 10) {
-//                            break out;
-//                        }
-//                    }
-//                }
-//                pageTotal = Integer.parseInt(webDriver.findElementByXPath("//span[@class='p-skip']/em/b").getText());
-//            }
-//        } catch (IOException e) {
-//            LOGGER.error("", e);
-//            webDriverActionDelegate.takeFullScreenShot(webDriver);
-//            try {
-//                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "utf-8");
-//            } catch (IOException e1) {
-//
-//            }
-//        } catch (Exception e) {
-//            LOGGER.error("", e);
-//            webDriverActionDelegate.takeFullScreenShot(webDriver);
-//            try {
-//                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "utf-8");
-//            } catch (IOException e1) {
-//
-//            }
-//        }finally {
-//            webDriver.quit();
-//        }
-//        resultList.forEach(searchResult -> {
-//            crawlSkuDetail(searchResult);
-//            crawlCommentH5(searchResult);
-//            crawlFoldComments(searchResult);
-//        });
-//        return resultList;
-//    }
+    private void crawlGoodsPage(SearchCursor cursor, StringBuilder sb, String url, String refer, Map<String, String> header, SearchRequest request, List<SearchResult> resultList) {
+        try {
+            String sku = request.getSku();
+            int position = 0;
+            for (int i = 1; i <= 2; i++) {
+                CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+                String urlStr = url + "&page=" + (cursor.getPage() * 2 + i) + "&s=" + cursor.getRank();
+                if (!(sb.length() == 0)) {
+                    urlStr = urlStr + "&show_items=" + sb.substring(0, sb.length() - 1);
+                }
+                String result = get(urlStr, refer, requestConfig, httpClient, header);
+                Document document = Jsoup.parse(result);
+                httpClient.close();
+                sb = new StringBuilder();
+                Elements elements = document.select("li[class~=gl-item]");
+                for (Element e : elements) {
+                    position++;
+                    cursor.setPos(position);
+                    sb.append(e.attr("data-pid")).append(",");
+                    if (e.select("span[class=p-promo-flag]").isEmpty()) {
+                        cursor.setRank(cursor.getRank() + 1);
+                    }
+                    if ((request.getType().equals("goods") && sku.equals(e.attr("data-sku"))) || (request.getType().equals("shop") && !e.select("a[class~=curr-shop]").isEmpty() && e.select("a[class~=curr-shop]").text().contains(sku))) {
+                        SearchResult searchResult = new SearchResult();
+                        searchResult.setPage(cursor.getPage() + 1);
+                        searchResult.setPos(position);
+                        searchResult.setRank(cursor.getRank());
+                        searchResult.setType(request.getType());
+                        searchResult.setSku(e.attr("data-sku"));
+                        resultList.add(searchResult);
+                        if (request.getType().equals("goods") || resultList.size() >= 10) {
+                            return;
+                        }
+                    }
+                }
+
+            }
+
+        } catch (Exception e) {
+            LOGGER.error("", e);
+        }
+    }
+
+    private List<SearchResult> searchGoodsCookie(SearchRequest request) {
+        List<SearchResult> resultList = new ArrayList<>();
+        ChromeDriver webDriver = webDriverBuilder.getWebDriver();
+//        CookieUtil.saveCookie("search", "PC", webDriver);
+//        CookieUtil.loadCookie("search", "PC", webDriver);
+
+
+        try {
+            String pvid = uuid();
+            String keyword = URLEncoder.encode(request.getKeyword(), "utf-8");
+            String refer = "https://search.jd.com/Search?keyword=" + keyword + "&enc=utf-8&pvid=" + pvid;
+            webDriver.get(refer);
+            CookieUtil.saveCookie("search", "PC", webDriver);
+            CookieUtil.loadCookie("search", "PC", webDriver);
+            if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+                webDriver.executeScript("SEARCH.sort('" + request.getSortType() + "')");
+            }
+            String sku = request.getSku();
+            int rank = 0;
+            WebElement element = webDriver.findElementByXPath("//span[@class='p-skip']/input[@class='input-txt']");
+            int elementPosition = element.getLocation().getY() - 100;
+            String js = String.format("window.scroll(0, %s)", elementPosition);
+            webDriver.executeScript(js);
+            sleep(1000);
+
+            int page = 1;
+            List<WebElement> elementList = webDriver.findElementsByCssSelector("li[class~=gl-item]");
+            for (int i = 0; i < elementList.size(); i++) {
+                WebElement e = elementList.get(i);
+                if (e.findElements(By.cssSelector("span[class=p-promo-flag]")).isEmpty()) {
+                    rank++;
+                }
+                if ((request.getType().equals("goods") && sku.equals(e.getAttribute("data-sku"))) || (request.getType().equals("shop") && !e.findElements(By.cssSelector("a[class~=curr-shop]")).isEmpty() && e.findElement(By.cssSelector("a[class~=curr-shop]")).getText().contains(request.getShop()))) {
+                    SearchResult searchResult = new SearchResult();
+                    searchResult.setPage(page);
+                    searchResult.setPos(i + 1);
+                    searchResult.setRank(rank);
+                    searchResult.setType(request.getType());
+                    searchResult.setKeyword(request.getKeyword());
+                    searchResult.setSku(e.getAttribute("data-sku"));
+                    if (request.getSource().equals("PC")) {
+                        searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
+                    } else {
+                        searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                    }
+                    WebElement imgNode = e.findElement(By.tagName("img"));
+                    if (imgNode.getAttribute("src") != null && !imgNode.getAttribute("src").isEmpty()) {
+                        searchResult.setImg(imgNode.getAttribute("src"));
+                    } else {
+                        searchResult.setImg(imgNode.getAttribute("data-lazy-img"));
+                    }
+                    resultList.add(searchResult);
+                    if (request.getType().equals("goods") || resultList.size() >= 10) {
+                        break;
+                    }
+                }
+            }
+
+            String pageStr = webDriver.findElementByCssSelector("#J_topPage i").getText();
+            int pageTotal = Integer.parseInt(pageStr);
+
+            out:
+            for (page = 2; page <= pageTotal; page++) {
+                webDriver.findElementByXPath("//a[@class='pn-next']").click();
+                sleep(1000);
+                webDriver.executeScript(js);
+                sleep(3000);
+                elementList = webDriver.findElementsByCssSelector("li[class~=gl-item]");
+                for (int i = 0; i < elementList.size(); i++) {
+                    WebElement e = elementList.get(i);
+                    if (e.findElements(By.cssSelector("span[class=p-promo-flag]")).isEmpty()) {
+                        rank++;
+                    }
+                    if ((request.getType().equals("goods") && sku.equals(e.getAttribute("data-sku"))) || (request.getType().equals("shop") && !e.findElements(By.cssSelector("a[class~=curr-shop]")).isEmpty() && e.findElement(By.cssSelector("a[class~=curr-shop]")).getText().contains(request.getShop()))) {
+                        SearchResult searchResult = new SearchResult();
+                        searchResult.setPage(page);
+                        searchResult.setPos(i + 1);
+                        searchResult.setRank(rank);
+                        searchResult.setType(request.getType());
+                        searchResult.setKeyword(request.getKeyword());
+                        searchResult.setSku(e.getAttribute("data-sku"));
+                        if (request.getSource().equals("PC")) {
+                            searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
+                        } else {
+                            searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                        }
+                        WebElement imgNode = e.findElement(By.tagName("img"));
+                        if (imgNode.getAttribute("src") != null && !imgNode.getAttribute("src").isEmpty()) {
+                            searchResult.setImg(imgNode.getAttribute("src"));
+                        } else {
+                            searchResult.setImg(imgNode.getAttribute("data-lazy-img"));
+                        }
+                        resultList.add(searchResult);
+                        if (request.getType().equals("goods") || resultList.size() >= 10) {
+                            break out;
+                        }
+                    }
+                }
+//                CookieUtil.saveCookie("search","PC",webDriver);
+                pageTotal = Integer.parseInt(webDriver.findElementByXPath("//span[@class='p-skip']/em/b").getText());
+            }
+        } catch (IOException e) {
+            LOGGER.error("", e);
+            webDriverActionDelegate.takeFullScreenShot(webDriver);
+            try {
+                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "utf-8");
+            } catch (IOException e1) {
+
+            }
+        } catch (Exception e) {
+            LOGGER.error("", e);
+            webDriverActionDelegate.takeFullScreenShot(webDriver);
+            try {
+                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "utf-8");
+            } catch (IOException e1) {
+
+            }
+        } finally {
+            webDriver.quit();
+        }
+        resultList.forEach(searchResult -> {
+            crawlSkuDetail(searchResult);
+            crawlCommentH5(searchResult);
+            crawlFoldComments(searchResult);
+        });
+        return resultList;
+    }
 
 
     private List<SearchResult> searchCategory(SearchRequest request) {
@@ -371,7 +575,9 @@ public class HttpCrawlerService implements CrawlerService {
         crawlCommentH5(searchResult);
         crawlFoldComments(searchResult);
         crawlCategory(request, searchResult);
-        resultList.add(searchResult);
+        if (searchResult.getRank() != 0) {
+            resultList.add(searchResult);
+        }
         return resultList;
     }
 
@@ -385,55 +591,21 @@ public class HttpCrawlerService implements CrawlerService {
             String shop = doc.select("div[class=J-hove-wrap EDropdown fr]>div[class=item]>div[class=name]").text();
             searchResult.setShop(shop);
             Elements elements = doc.select("#crumb-wrap>div[class=w]>div[class=crumb fl clearfix] a");
-            String catUrl = elements.get(2).attr("href");
-            Pattern p = Pattern.compile("\\d+,\\d+,\\d+");
-            Matcher matcher = p.matcher(catUrl);
-            if (matcher.find()) {
-                String cat = matcher.group();
-                int page = 1;
-                int position = 0;
-                int rank = 0;
-                if (request.getSortType() != null) {
-                    catUrl = "https://list.jd.com/list.html?cat=" + cat + "&page=" + page + "&sort=" + getCategorySortType(request.getSortType()) + "&trans=1&JL=6_0_0#J_main";
-                } else {
-                    catUrl = "https://list.jd.com/list.html?cat=" + cat + "&page=" + page + "&sort=sort_rank_asc&trans=1&JL=6_0_0#J_main";
-                }
-                doc = Jsoup.connect(catUrl).timeout(30000).get();
-                elements = doc.select("li[class~=gl-item]");
-                for (Element e : elements) {
-                    position++;
-                    if (e.select("span[class=p-promo-flag]").isEmpty()) {
-                        rank++;
-                    } else {
-                        System.out.println(e.select("span[class=p-promo-flag]").text());
-                    }
-                    if (sku.equals(e.select("div[data-sku]").attr("data-sku"))) {
-                        searchResult.setPage(page);
-                        searchResult.setPos(position);
-                        searchResult.setRank(rank);
-                        searchResult.setSku(sku);
-                        searchResult.setKeyword("");
-                        if (request.getSource().equals("PC")) {
-                            searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
-                        } else {
-                            searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-                        }
-                        Element imgNode = e.select("img").first();
-                        if (imgNode.attr("src") != null && !imgNode.attr("src").isEmpty()) {
-                            searchResult.setImg(imgNode.attr("src"));
-                        } else {
-                            searchResult.setImg(imgNode.attr("data-lazy-img"));
-                        }
-                        return;
-                    }
-                }
-                int pageTotal = Math.min(Integer.parseInt(doc.select("span[class=p-skip]>em>b").text()), 100);
-                for (int i = 2; i < pageTotal; i++) {
-                    position = 0;
+            if (elements.size() > 2) {
+
+
+                String catUrl = elements.get(2).attr("href");
+                Pattern p = Pattern.compile("\\d+,\\d+,\\d+");
+                Matcher matcher = p.matcher(catUrl);
+                if (matcher.find()) {
+                    String cat = matcher.group();
+                    int page = 1;
+                    int position = 0;
+                    int rank = 0;
                     if (request.getSortType() != null) {
-                        catUrl = "https://list.jd.com/list.html?cat=" + cat + "&page=" + i + "&sort=sort_rank_asc&trans=1&JL=6_0_0#J_main";
+                        catUrl = "https://list.jd.com/list.html?cat=" + cat + "&page=" + page + "&sort=" + getCategorySortType(request.getSortType()) + "&trans=1&JL=6_0_0#J_main";
                     } else {
-                        catUrl = "https://list.jd.com/list.html?cat=" + cat + "&page=" + i + "&sort=" + getCategorySortType(request.getSortType()) + "&trans=1&JL=6_0_0#J_main";
+                        catUrl = "https://list.jd.com/list.html?cat=" + cat + "&page=" + page + "&sort=sort_rank_asc&trans=1&JL=6_0_0#J_main";
                     }
                     doc = Jsoup.connect(catUrl).timeout(30000).get();
                     elements = doc.select("li[class~=gl-item]");
@@ -441,31 +613,65 @@ public class HttpCrawlerService implements CrawlerService {
                         position++;
                         if (e.select("span[class=p-promo-flag]").isEmpty()) {
                             rank++;
+                            if (sku.equals(e.select("div[data-sku]").attr("data-sku"))) {
+                                searchResult.setPage(page);
+                                searchResult.setPos(position);
+                                searchResult.setRank(rank);
+                                searchResult.setSku(sku);
+                                searchResult.setKeyword("");
+                                if (request.getSource().equals("PC")) {
+                                    searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
+                                } else {
+                                    searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                                }
+                                Element imgNode = e.select("img").first();
+                                if (imgNode.attr("src") != null && !imgNode.attr("src").isEmpty()) {
+                                    searchResult.setImg(imgNode.attr("src"));
+                                } else {
+                                    searchResult.setImg(imgNode.attr("data-lazy-img"));
+                                }
+                                return;
+                            }
                         }
-                        if (sku.equals(e.select("div[data-sku]").attr("data-sku"))) {
-                            searchResult.setPage(page + 1);
-                            searchResult.setPos(position);
-                            searchResult.setRank(rank);
-                            searchResult.setSku(sku);
-                            searchResult.setKeyword("");
-                            if (request.getSource().equals("PC")) {
-                                searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
-                            } else {
-                                searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                    }
+                    int pageTotal = Math.min(Integer.parseInt(doc.select("span[class=p-skip]>em>b").text()), 100);
+                    for (int i = 2; i < pageTotal; i++) {
+                        position = 0;
+                        if (request.getSortType() != null) {
+                            catUrl = "https://list.jd.com/list.html?cat=" + cat + "&page=" + i + "&sort=sort_rank_asc&trans=1&JL=6_0_0#J_main";
+                        } else {
+                            catUrl = "https://list.jd.com/list.html?cat=" + cat + "&page=" + i + "&sort=" + getCategorySortType(request.getSortType()) + "&trans=1&JL=6_0_0#J_main";
+                        }
+                        doc = Jsoup.connect(catUrl).timeout(30000).get();
+                        elements = doc.select("li[class~=gl-item]");
+                        for (Element e : elements) {
+                            position++;
+                            if (e.select("span[class=p-promo-flag]").isEmpty()) {
+                                rank++;
                             }
-                            Element imgNode = e.select("img").first();
-                            if (imgNode.attr("src") != null && !imgNode.attr("src").isEmpty()) {
-                                searchResult.setImg(imgNode.attr("src"));
-                            } else {
-                                searchResult.setImg(imgNode.attr("data-lazy-img"));
+                            if (sku.equals(e.select("div[data-sku]").attr("data-sku"))) {
+                                searchResult.setPage(page + 1);
+                                searchResult.setPos(position);
+                                searchResult.setRank(rank);
+                                searchResult.setSku(sku);
+                                searchResult.setKeyword("");
+                                if (request.getSource().equals("PC")) {
+                                    searchResult.setUrl("https://item.jd.com/" + searchResult.getSku() + ".html");
+                                } else {
+                                    searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                                }
+                                Element imgNode = e.select("img").first();
+                                if (imgNode.attr("src") != null && !imgNode.attr("src").isEmpty()) {
+                                    searchResult.setImg(imgNode.attr("src"));
+                                } else {
+                                    searchResult.setImg(imgNode.attr("data-lazy-img"));
+                                }
+                                return;
                             }
-                            return;
                         }
                     }
                 }
-
             }
-            System.out.println(doc);
         } catch (IOException e) {
             LOGGER.error("", e);
         }
@@ -497,17 +703,21 @@ public class HttpCrawlerService implements CrawlerService {
             String title = doc.select("div[class=sku-name]").text().trim();
             searchResult.setTitle(title);
             String shop = doc.select("div[class=J-hove-wrap EDropdown fr]>div[class=item]>div[class=name]").text();
+            if (shop == null || shop.isEmpty()) {
+                shop = doc.select("div[class=shopName]").text();
+            }
             searchResult.setShop(shop);
             Elements elements = doc.select("#crumb-wrap>div[class=w]>div[class=crumb fl clearfix] a");
-            String firstCategory = elements.get(0).text();
-            String secondCategory = elements.get(1).text();
-            String thirdCategory = elements.get(2).text();
-            Category category = new Category();
-            category.setLevel1(firstCategory);
-            category.setLevel2(secondCategory);
-            category.setLevel3(thirdCategory);
-            searchResult.setCategory(category);
-            System.out.println(doc);
+            if (elements.size() > 2) {
+                String firstCategory = elements.get(0).text();
+                String secondCategory = elements.get(1).text();
+                String thirdCategory = elements.get(2).text();
+                Category category = new Category();
+                category.setLevel1(firstCategory);
+                category.setLevel2(secondCategory);
+                category.setLevel3(thirdCategory);
+                searchResult.setCategory(category);
+            }
         } catch (IOException e) {
             LOGGER.error("", e);
         }
@@ -518,7 +728,7 @@ public class HttpCrawlerService implements CrawlerService {
         String url = "https://sclub.jd.com/comment/productPageComments.action?callback=fetchJSON_comment98vv225&productId=" + searchResult.getSku() + "&score=0&sortType=5&page=0&pageSize=10&isShadowSku=0&rid=0&fold=2";
         try {
             HttpGet httpGet = new HttpGet(url);
-            httpGet.setHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
+            httpGet.addHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
             httpGet.setConfig(requestConfig);
             System.out.println(url);
             CloseableHttpResponse response = httpClient.execute(httpGet);
@@ -548,9 +758,9 @@ public class HttpCrawlerService implements CrawlerService {
         CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
         try {
             HttpPost httpPost = new HttpPost("https://item.m.jd.com/newComments/newCommentsDetail.json");
-            httpPost.setHeader("Referer", "https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-            httpPost.setHeader("user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A372 Safari/604.1");
-            httpPost.setHeader("cookie", "abtest=20180228202800418_35; subAbTest=20180228202800418_63; mobilev=html5; mba_muid=15102037407391075657148; M_Identification=3dbf82145dafa232_7e49c7a6168021190e99155b7a54294b; M_Identification_abtest=20180228203521392_79417497; user-key=4f824d2f-c787-4c0a-a0fe-47bbc16ffd61; __jdu=15102037407391075657148; areaId=15; cn=0; ipLocation=%u6D59%u6C5F; ipLoc-djd=15-1213-3411-52667; _jrda=2; PCSYCityID=1213; m_uuid_new=7581434D080F0F9CACB87FDAB8802090; mhome=1; mt_xid=V2_52007VwMWUlxbU1gZTBhaB28DE1RZX1ZcH0wQbAFkURIBDw8CRkhLSlQZYgMUUUFRUlkcVRBfVWcBGgFcX1BfSHkaXQVuHxNQQVhaSx9OElgNbAASYl9oUmofTBFcAGUFE1VtWFFZHQ%3D%3D; TrackID=1WO7I-jO3o5eG2aje7Biq7Dqyd4kOT0HgfKR7eAj9jrGa86tG7DW0Lp425GSS7fyYmepwQIEoe51DTEHhIxAxI2l-60YrURdfh7KxpC4tt6s; pinId=tv7lg4K603eYEzFXmTd7PA; pin=%E8%AF%BA%E9%82%A6%E6%A8%A1%E5%9E%8B%E8%B1%B9; unick=%E8%AF%BA%E9%82%A6%E6%A8%A1%E5%9E%8B%E8%B1%B9; _tp=YNgb%2BpVBeuPdmEIO5nCqm4Wjzdm1b2MJ72aMs%2BZnuBD3RmRRkUBZ6bgSCC8Vnd5Q; _pst=%E8%AF%BA%E9%82%A6%E6%A8%A1%E5%9E%8B%E8%B1%B9; __jda=122270672.15102037407391075657148.1510203741.1521601290.1521614989.40; __jdc=122270672; __jdv=122270672|direct|-|none|-|1521614989388; 3AB9D23F7A4B3C9B=6J3PSQXXMA7QOEN4FBQJM5OJ5KRJULMKFO3UTQJXCVKAWZD7O6SHBBE2CWRO56FA4IVYK74R2YOKB4GNQZEPMTWGEU; sid=e32c30c27c268986e1bf3e9388314352; USER_FLAG_CHECK=2dc68f02e6c15b183027396c0cc8c798; autoOpenApp_downCloseDate_auto=1521616324011_21600000; warehistory=\"2600242,25568515204,20099469725,5001175,25868561553,14143954650,25797029156,12141800119,5716985,5789585,5495676,11229407797,\"; __jdb=122270672.7.15102037407391075657148|40.1521614989; mba_sid=15216163238624899707965548601.2");
+            httpPost.addHeader("Referer", "https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+            httpPost.addHeader("user-agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 (KHTML, like Gecko) Version/11.0 Mobile/15A372 Safari/604.1");
+            httpPost.addHeader("cookie", "abtest=20180228202800418_35; subAbTest=20180228202800418_63; mobilev=html5; mba_muid=15102037407391075657148; M_Identification=3dbf82145dafa232_7e49c7a6168021190e99155b7a54294b; M_Identification_abtest=20180228203521392_79417497; user-key=4f824d2f-c787-4c0a-a0fe-47bbc16ffd61; __jdu=15102037407391075657148; areaId=15; cn=0; ipLocation=%u6D59%u6C5F; ipLoc-djd=15-1213-3411-52667; _jrda=2; PCSYCityID=1213; m_uuid_new=7581434D080F0F9CACB87FDAB8802090; mhome=1; mt_xid=V2_52007VwMWUlxbU1gZTBhaB28DE1RZX1ZcH0wQbAFkURIBDw8CRkhLSlQZYgMUUUFRUlkcVRBfVWcBGgFcX1BfSHkaXQVuHxNQQVhaSx9OElgNbAASYl9oUmofTBFcAGUFE1VtWFFZHQ%3D%3D; TrackID=1WO7I-jO3o5eG2aje7Biq7Dqyd4kOT0HgfKR7eAj9jrGa86tG7DW0Lp425GSS7fyYmepwQIEoe51DTEHhIxAxI2l-60YrURdfh7KxpC4tt6s; pinId=tv7lg4K603eYEzFXmTd7PA; pin=%E8%AF%BA%E9%82%A6%E6%A8%A1%E5%9E%8B%E8%B1%B9; unick=%E8%AF%BA%E9%82%A6%E6%A8%A1%E5%9E%8B%E8%B1%B9; _tp=YNgb%2BpVBeuPdmEIO5nCqm4Wjzdm1b2MJ72aMs%2BZnuBD3RmRRkUBZ6bgSCC8Vnd5Q; _pst=%E8%AF%BA%E9%82%A6%E6%A8%A1%E5%9E%8B%E8%B1%B9; __jda=122270672.15102037407391075657148.1510203741.1521601290.1521614989.40; __jdc=122270672; __jdv=122270672|direct|-|none|-|1521614989388; 3AB9D23F7A4B3C9B=6J3PSQXXMA7QOEN4FBQJM5OJ5KRJULMKFO3UTQJXCVKAWZD7O6SHBBE2CWRO56FA4IVYK74R2YOKB4GNQZEPMTWGEU; sid=e32c30c27c268986e1bf3e9388314352; USER_FLAG_CHECK=2dc68f02e6c15b183027396c0cc8c798; autoOpenApp_downCloseDate_auto=1521616324011_21600000; warehistory=\"2600242,25568515204,20099469725,5001175,25868561553,14143954650,25797029156,12141800119,5716985,5789585,5495676,11229407797,\"; __jdb=122270672.7.15102037407391075657148|40.1521614989; mba_sid=15216163238624899707965548601.2");
             httpPost.setConfig(requestConfig);
             List<NameValuePair> nvps = new ArrayList<>();
             nvps.add(new BasicNameValuePair("wareId", searchResult.getSku()));
@@ -594,7 +804,7 @@ public class HttpCrawlerService implements CrawlerService {
         String url = "https://club.jd.com/comment/getProductPageFoldComments.action?callback=jQuery1552332&productId=" + searchResult.getSku() + "&score=0&sortType=5&page=0&pageSize=5&_=1521114318952";
         try {
             HttpGet httpGet = new HttpGet(url);
-            httpGet.setHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
+            httpGet.addHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
             httpGet.setConfig(requestConfig);
             CloseableHttpResponse response = httpClient.execute(httpGet);
             BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "gbk"));
@@ -618,7 +828,7 @@ public class HttpCrawlerService implements CrawlerService {
                     url = "https://club.jd.com/comment/getProductPageFoldComments.action?callback=jQuery1552332&productId=" + searchResult.getSku() + "&score=0&sortType=5&page=" + (page - 1) + "&pageSize=5&_=1521114318952";
                     httpClient = HttpClientFactory.getHttpClient();
                     httpGet = new HttpGet(url);
-                    httpGet.setHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
+                    httpGet.addHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
                     httpGet.setConfig(requestConfig);
                     response = httpClient.execute(httpGet);
                     reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "gbk"));
@@ -643,8 +853,8 @@ public class HttpCrawlerService implements CrawlerService {
 
     private String get(String url, String refer, RequestConfig requestConfig, CloseableHttpClient httpClient) throws Exception {
         HttpGet httpGet = new HttpGet(url);
-        httpGet.setHeader("Referer", refer);
-        httpGet.setHeader("Host", "search.jd.com");
+        httpGet.addHeader("Referer", refer);
+        httpGet.addHeader("Host", "search.jd.com");
         httpGet.setConfig(requestConfig);
         System.out.println(url);
         CloseableHttpResponse response = httpClient.execute(httpGet);
@@ -660,10 +870,10 @@ public class HttpCrawlerService implements CrawlerService {
 
     private String get(String url, String refer, RequestConfig requestConfig, CloseableHttpClient httpClient, Map<String, String> header) throws Exception {
         HttpGet httpGet = new HttpGet(url);
-        httpGet.setHeader("Referer", refer);
-        httpGet.setHeader("Host", "search.jd.com");
+        httpGet.addHeader("Referer", refer);
+        httpGet.addHeader("Host", "search.jd.com");
         for (Map.Entry<String, String> entry : header.entrySet()) {
-            httpGet.setHeader(entry.getKey(), entry.getValue());
+            httpGet.addHeader(entry.getKey(), entry.getValue());
         }
         httpGet.setConfig(requestConfig);
         System.out.println(url);
@@ -703,22 +913,23 @@ public class HttpCrawlerService implements CrawlerService {
                     JSONObject record = array.getJSONObject(j);
                     if (record.getString("catid") == null) {
                         adCount++;
-                    }
-                    if (record != null && request.getSku().equals(record.getString("wareId"))) {
-                        SearchResult searchResult = new SearchResult();
-                        searchResult.setPage(i);
-                        searchResult.setPos(j + 1);
-                        searchResult.setRank((i - 1) * 10 + j + 1 - adCount);
-                        searchResult.setType(request.getType());
-                        searchResult.setKeyword(request.getKeyword());
-                        searchResult.setSku(record.getString("wareId"));
-                        searchResult.setComment(record.getIntValue("totalCount"));
-                        searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-                        searchResult.setImg(record.getString("imageurl"));
-                        crawlSkuDetail(searchResult);
-                        crawlFoldComments(searchResult);
-                        resultList.add(searchResult);
-                        break out;
+                    } else {
+                        if (record != null && request.getSku().equals(record.getString("wareId"))) {
+                            SearchResult searchResult = new SearchResult();
+                            searchResult.setPage(i);
+                            searchResult.setPos(j + 1);
+                            searchResult.setRank((i - 1) * 10 + j + 1 - adCount);
+                            searchResult.setType(request.getType());
+                            searchResult.setKeyword(request.getKeyword());
+                            searchResult.setSku(record.getString("wareId"));
+                            searchResult.setComment(record.getIntValue("totalCount"));
+                            searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                            searchResult.setImg(record.getString("imageurl"));
+                            crawlSkuDetail(searchResult);
+                            crawlFoldComments(searchResult);
+                            resultList.add(searchResult);
+                            break out;
+                        }
                     }
                 }
                 LOGGER.info(result.toJSONString());
@@ -734,7 +945,8 @@ public class HttpCrawlerService implements CrawlerService {
         List<SearchResult> resultList = new ArrayList<>();
         try {
             int adCount = 0;
-            for (int i = 1; i <= 100; i++) {
+            out:
+            for (int i = 1; i <= 50; i++) {
                 JSONObject jsonObject = JSONObject.parseObject(searchH5(request.getKeyword(), i));
                 String value = jsonObject.getString("value");
                 JSONObject result = JSONObject.parseObject(value);
@@ -743,30 +955,31 @@ public class HttpCrawlerService implements CrawlerService {
                     JSONObject record = array.getJSONObject(j);
                     if (record.getString("catid") == null) {
                         adCount++;
-                    }
-                    if (record != null) {
-                        SearchResult searchResult = new SearchResult();
-                        searchResult.setSku(record.getString("wareId"));
-                        crawlSkuDetail(searchResult);
-                        if (searchResult.getShop().contains(request.getShop())) {
-                            searchResult.setPage(i);
-                            searchResult.setPos(j + 1);
-                            searchResult.setRank((i - 1) * 10 + j + 1 - adCount);
-                            searchResult.setType(request.getType());
-                            if (Pattern.matches("(\\d+-\\d+-\\d+)", request.getKeyword())) {
-                                searchResult.setKeyword("");
-                            } else {
-                                searchResult.setKeyword(request.getKeyword());
-                            }
-                            searchResult.setKeyword(request.getKeyword());
-                            searchResult.setComment(record.getIntValue("totalCount"));
-                            searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-                            searchResult.setImg(record.getString("imageurl"));
+                    } else {
+                        if (record != null) {
+                            SearchResult searchResult = new SearchResult();
+                            searchResult.setSku(record.getString("wareId"));
                             crawlSkuDetail(searchResult);
-                            crawlFoldComments(searchResult);
-                            resultList.add(searchResult);
-                            if (resultList.size() == 10) {
-                                break;
+                            if (searchResult.getShop().contains(request.getShop())) {
+                                searchResult.setPage(i);
+                                searchResult.setPos(j + 1);
+                                searchResult.setRank((i - 1) * 10 + j + 1 - adCount);
+                                searchResult.setType(request.getType());
+                                if (Pattern.matches("(\\d+-\\d+-\\d+)", request.getKeyword())) {
+                                    searchResult.setKeyword("");
+                                } else {
+                                    searchResult.setKeyword(request.getKeyword());
+                                }
+                                searchResult.setKeyword(request.getKeyword());
+                                searchResult.setComment(record.getIntValue("totalCount"));
+                                searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                                searchResult.setImg(record.getString("imageurl"));
+                                crawlSkuDetail(searchResult);
+                                crawlFoldComments(searchResult);
+                                resultList.add(searchResult);
+                                if (resultList.size() >= 3) {
+                                    break out;
+                                }
                             }
                         }
                     }
@@ -886,19 +1099,20 @@ public class HttpCrawlerService implements CrawlerService {
                     JSONObject record = array.getJSONObject(j);
                     if (record.getString("catid") == null) {
                         adCount++;
-                    }
-                    if (record != null && request.getSku().equals(record.getString("wareId"))) {
-                        searchResult.setPage(i);
-                        searchResult.setPos(j + 1);
-                        searchResult.setRank((i - 1) * 10 + j + 1 - adCount);
-                        searchResult.setType(request.getType());
-                        searchResult.setKeyword(request.getKeyword());
-                        searchResult.setComment(record.getIntValue("totalCount"));
-                        searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
-                        searchResult.setImg(record.getString("imageurl"));
-                        crawlFoldComments(searchResult);
-                        resultList.add(searchResult);
-                        break out;
+                    } else {
+                        if (record != null && request.getSku().equals(record.getString("wareId"))) {
+                            searchResult.setPage(i);
+                            searchResult.setPos(j + 1);
+                            searchResult.setRank((i - 1) * 10 + j + 1 - adCount);
+                            searchResult.setType(request.getType());
+                            searchResult.setKeyword(request.getKeyword());
+                            searchResult.setComment(record.getIntValue("totalCount"));
+                            searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                            searchResult.setImg(record.getString("imageurl"));
+                            crawlFoldComments(searchResult);
+                            resultList.add(searchResult);
+                            break out;
+                        }
                     }
                 }
             }
@@ -927,7 +1141,7 @@ public class HttpCrawlerService implements CrawlerService {
                     if (!cid.isEmpty()) {
                         CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
                         HttpGet httpGet = new HttpGet("https://so.m.jd.com/category/list.action?_format_=json&catelogyId=" + cid);
-                        httpGet.setHeader("referer", "https://m.jd.com/");
+                        httpGet.addHeader("referer", "https://m.jd.com/");
                         httpGet.setConfig(requestConfig);
                         CloseableHttpResponse response = httpClient.execute(httpGet);
                         BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));

@@ -31,8 +31,6 @@ public class WebDriverBuilder {
 //        options.setCapability("DISPLAY", "7");
             options.setHeadless(true);
             options.merge(dcaps);
-
-
             String proxy = "";
 
 //        if (proxy != null) {
@@ -40,7 +38,7 @@ public class WebDriverBuilder {
 //        }
             ChromeDriver driver = new ChromeDriver(options);
             driver.manage().window().maximize();
-            driver.get("https://www.baidu.com");
+            driver.get("https://www.jd.com/");
             LOGGER.info("======================= chrome window size" + driver.manage().window().getSize() + " ===========================");
             return driver;
         } catch (Exception e) {

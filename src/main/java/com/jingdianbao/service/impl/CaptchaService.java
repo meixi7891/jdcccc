@@ -3,6 +3,8 @@ package com.jingdianbao.service.impl;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.jingdianbao.captcha.Api;
+import com.jingdianbao.captcha.Util;
 import com.jingdianbao.http.HttpClientFactory;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpEntity;
@@ -28,30 +30,73 @@ public class CaptchaService {
     private String appKey = "bc0db473afd911d202274f9f6753fda5";
 
     public String getCode(File file) {
-        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
-        CloseableHttpResponse response = null;
-        String result = null;
         try {
-            RequestConfig config = RequestConfig.custom().setConnectTimeout(30000).setSocketTimeout(60000).build();
-            HttpPost httppost = new HttpPost("http://op.juhe.cn/vercode/index");
-            StringBody keyBody = new StringBody(appKey, ContentType.TEXT_PLAIN);
-            StringBody typeBody = new StringBody("5004", ContentType.TEXT_PLAIN);
-            HttpEntity reqEntity = MultipartEntityBuilder.create().addBinaryBody("image", file, ContentType.create("image/png"), file.getName()).addPart("key", keyBody)
-                    .addPart("codeType", typeBody).build();
-            httppost.setEntity(reqEntity);
-            httppost.setConfig(config);
-            response = httpClient.execute(httppost);
-            HttpEntity resEntity = response.getEntity();
-            if (resEntity != null) {
-                result = IOUtils.toString(resEntity.getContent(), "UTF-8");
-            }
-            LOGGER.info("=========================== verify code service return : " + result);
-            JSONObject jsonObject = JSON.parseObject(result);
-            EntityUtils.consume(resEntity);
+            Api api = new Api();
+            String app_id = "302419";
+            String app_key = "Qs34MwMuBOGuL58t0jAYKmKlcPXXUFst";
+            String pd_id = "102219";
+            String pd_key = "jXBzWGlQmBXlC9vLL2/mwtudTowoYQIW";
+            // 对象生成之后，在任何操作之前，需要先调用初始化接口
+            api.Init(app_id, app_key, pd_id, pd_key);
+            // 查询余额
+            Util.HttpResp resp = api.QueryBalc();
+            System.out.printf("query balc!ret: %d cust: %f err: %s reqid: %s pred: %s\n", resp.ret_code, resp.cust_val, resp.err_msg, resp.req_id, resp.pred_resl);
+            //
+            String pred_type = "100010018";
+            // 通过文件进行验证码识别
+            resp = api.PredictFromFile(pred_type, file.getName());
+            JSONObject jsonObject = JSONObject.parseObject(resp.rsp_data);
             return jsonObject.getString("result");
         } catch (Exception e) {
-            LOGGER.error("", e);
+
         }
-        return result;
+        return "";
     }
+
+    public String getCode(String file) {
+        try {
+            Api api = new Api();
+            String app_id = "302419";
+            String app_key = "Qs34MwMuBOGuL58t0jAYKmKlcPXXUFst";
+            String pd_id = "102219";
+            String pd_key = "jXBzWGlQmBXlC9vLL2/mwtudTowoYQIW";
+            // 对象生成之后，在任何操作之前，需要先调用初始化接口
+            api.Init(app_id, app_key, pd_id, pd_key);
+            // 查询余额
+            Util.HttpResp resp = api.QueryBalc();
+            System.out.printf("query balc!ret: %d cust: %f err: %s reqid: %s pred: %s\n", resp.ret_code, resp.cust_val, resp.err_msg, resp.req_id, resp.pred_resl);
+            //
+            String pred_type = "30400";
+            // 通过文件进行验证码识别
+            resp = api.PredictFromFile(pred_type, file);
+            JSONObject jsonObject = JSONObject.parseObject(resp.rsp_data);
+            return jsonObject.getString("result");
+        } catch (Exception e) {
+
+        }
+        return "";
+    }
+
+//    public static void main(String[] args) {
+//        try {
+//            Api api = new Api();
+//            String app_id = "302419";
+//            String app_key = "Qs34MwMuBOGuL58t0jAYKmKlcPXXUFst";
+//            String pd_id = "102219";
+//            String pd_key = "jXBzWGlQmBXlC9vLL2/mwtudTowoYQIW";
+//            // 对象生成之后，在任何操作之前，需要先调用初始化接口
+//            api.Init(app_id, app_key, pd_id, pd_key);
+//            // 查询余额
+//            String pred_type = "30400";
+//            String[] files = {"D:/screenshot3294742200720419261.png", "D:/screenshot3458576259708594111.png", "D:/screenshot7133470839679500492.png", "D:/screenshot8370559303951716389.png"};
+//            for (int i = 0; i < files.length; i++) {
+//                long start = System.nanoTime();
+//                Util.HttpResp resp = api.PredictFromFile(pred_type, files[i]);
+//                System.out.println("time cost :" + (System.nanoTime() - start));
+//                System.out.println("file name :" + files[i] + " ,  result : " + resp.rsp_data);
+//            }
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
+//    }
 }
