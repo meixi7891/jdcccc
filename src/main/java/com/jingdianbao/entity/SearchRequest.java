@@ -14,14 +14,20 @@ public class SearchRequest {
 
     private String shop;
 
+    private String priceLow = "";
 
-    public SearchRequest(String type, String source, String keyword, String sku, String sortType, String shop) {
+    private String priceHigh = "";
+
+
+    public SearchRequest(String type, String source, String keyword, String sku, String sortType, String shop,String priceLow , String priceHigh) {
         this.type = type;
         this.source = source;
         this.keyword = keyword;
         this.sku = sku;
         this.sortType = sortType;
         this.shop = shop;
+        this.priceLow = priceLow;
+        this.priceHigh = priceHigh;
     }
 
     public SearchRequest() {
@@ -73,5 +79,21 @@ public class SearchRequest {
 
     public void setShop(String shop) {
         this.shop = shop;
+    }
+
+    public String getPriceLow() {
+        return priceLow;
+    }
+
+    public void setPriceLow(String priceLow) {
+        this.priceLow = priceLow;
+    }
+
+    public String getPriceHigh() {
+        return priceHigh;
+    }
+
+    public void setPriceHigh(String priceHigh) {
+        this.priceHigh = priceHigh;
     }
 }

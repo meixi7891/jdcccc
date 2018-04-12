@@ -9,6 +9,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.util.ArrayList;
+import java.util.Random;
 import java.util.Set;
 
 @Component
@@ -367,6 +368,48 @@ public class WebDriverActionDelegate {
     public static void forword(WebDriver driver) {
         driver.navigate().forward();
     }
+
+
+
+    public static boolean isElementDisplayed(String xpath, WebDriver webDriver) {
+        try {
+            WebElement webElement = webDriver.findElement(By.xpath(xpath));
+            return webElement.isDisplayed();
+        } catch (NoSuchElementException e) {
+            return false;
+        }
+    }
+
+    public static boolean waitElementDisplayed(String xpath, WebDriver webDriver, int seconds) {
+        for (int i = 0; i < seconds; i++) {
+            try {
+                WebElement webElement = webDriver.findElement(By.xpath(xpath));
+                return webElement.isDisplayed();
+            } catch (NoSuchElementException e) {
+                sleep(1000);
+            }
+        }
+        return false;
+    }
+
+    public static void sleep(long mills) {
+        try {
+            Thread.sleep(mills);
+        } catch (InterruptedException e) {
+
+        }
+    }
+
+    public static void sleepRandom(long mills) {
+        try {
+            Random random = new Random();
+            mills = random.nextInt(1000);
+            Thread.sleep(mills);
+        } catch (InterruptedException e) {
+
+        }
+    }
+
 
     /**
      * @param driver

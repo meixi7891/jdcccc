@@ -36,7 +36,7 @@ public class CookieUtil {
         }
     }
 
-    public static boolean hasCookie(String userName, String pwd){
+    public static boolean hasCookie(String userName, String pwd) {
         Jedis jedis = RedisClient.getRedesClient().getJedis();
         String key = userName + "_" + pwd;
         String str = jedis.hget("cookies", key);
@@ -45,6 +45,36 @@ public class CookieUtil {
             return false;
         }
         return true;
+    }
+
+
+    public static boolean hasSellerCookie(String userName, String pwd) {
+        Jedis jedis = RedisClient.getRedesClient().getJedis();
+        String key = "seller_cookies_" + userName + "_" + pwd;
+        String str = jedis.hget("seller_cookies", key);
+        RedisClient.getRedesClient().returnResource(jedis);
+        if (str == null || str.isEmpty()) {
+            return false;
+        }
+        return true;
+    }
+
+    public static void saveSellerCookie(String userName, String pwd, WebDriver webDriver) {
+        Set<Cookie> cookieSet = webDriver.manage().getCookies();
+        String key = "seller_cookies_" + userName + "_" + pwd;
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (Cookie cookie : cookieSet) {
+                sb.append(cookie.toString()).append("@__@");
+            }
+            String str = sb.toString();
+            Jedis jedis = RedisClient.getRedesClient().getJedis();
+            jedis.set(key, str);
+            jedis.expire(key, 7 * 24 * 60 * 60);
+            RedisClient.getRedesClient().returnResource(jedis);
+        } catch (Exception e) {
+            LOGGER.error("", e);
+        }
     }
 
 

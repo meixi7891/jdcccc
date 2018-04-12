@@ -42,18 +42,18 @@ public class CaptchaService {
             Util.HttpResp resp = api.QueryBalc();
             System.out.printf("query balc!ret: %d cust: %f err: %s reqid: %s pred: %s\n", resp.ret_code, resp.cust_val, resp.err_msg, resp.req_id, resp.pred_resl);
             //
-            String pred_type = "100010018";
+            String pred_type = "30400";
             // 通过文件进行验证码识别
             resp = api.PredictFromFile(pred_type, file.getName());
             JSONObject jsonObject = JSONObject.parseObject(resp.rsp_data);
             return jsonObject.getString("result");
         } catch (Exception e) {
-
+            LOGGER.error("", e);
         }
         return "";
     }
 
-    public String getCode(String file) {
+    public String getCode(String base64Str) {
         try {
             Api api = new Api();
             String app_id = "302419";
@@ -68,11 +68,13 @@ public class CaptchaService {
             //
             String pred_type = "30400";
             // 通过文件进行验证码识别
-            resp = api.PredictFromFile(pred_type, file);
+            resp = api.PredictFromBase64(pred_type, base64Str);
+            LOGGER.error("code result : " + resp.rsp_data);
             JSONObject jsonObject = JSONObject.parseObject(resp.rsp_data);
+
             return jsonObject.getString("result");
         } catch (Exception e) {
-
+            LOGGER.error("", e);
         }
         return "";
     }
@@ -88,7 +90,7 @@ public class CaptchaService {
 //            api.Init(app_id, app_key, pd_id, pd_key);
 //            // 查询余额
 //            String pred_type = "30400";
-//            String[] files = {"D:/screenshot3294742200720419261.png", "D:/screenshot3458576259708594111.png", "D:/screenshot7133470839679500492.png", "D:/screenshot8370559303951716389.png"};
+//            String[] files = {"E:\\screenShot\\screenshot7123961308211313944.png"};
 //            for (int i = 0; i < files.length; i++) {
 //                long start = System.nanoTime();
 //                Util.HttpResp resp = api.PredictFromFile(pred_type, files[i]);

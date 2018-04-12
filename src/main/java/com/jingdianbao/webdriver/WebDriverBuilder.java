@@ -23,13 +23,13 @@ public class WebDriverBuilder {
             DesiredCapabilities dcaps = new DesiredCapabilities();
             ChromeOptions options = new ChromeOptions();
             options.addArguments("start-maximized");
-//            System.setProperty("webdriver.chrome.driver", "E:\\chromedriver_win32\\chromedriver.exe");
-//            options.setBinary("C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe");
-            System.setProperty("webdriver.chrome.driver", chromeDriverPath);
-            options.setBinary(chromeBinPath);
+            System.setProperty("webdriver.chrome.driver", "E:\\chromedriver_win32\\chromedriver.exe");
+            options.setBinary("C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe");
+//            System.setProperty("webdriver.chrome.driver", chromeDriverPath);
+//            options.setBinary(chromeBinPath);
 //        System.setProperty("Importal.xvfb.id", "7");
 //        options.setCapability("DISPLAY", "7");
-            options.setHeadless(true);
+//            options.setHeadless(true);
             options.merge(dcaps);
             String proxy = "";
 

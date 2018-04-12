@@ -31,7 +31,7 @@
     <logger name="org.apache.http.impl.conn" level="INFO"/>
 
 
-    <root level="${app.log.level:-DEBUG}">
+    <root level="${app.log.level:-ERROR}">
         <appender-ref ref="STDOUT"/>
         <appender-ref ref="rollingFile"/>
     </root>
