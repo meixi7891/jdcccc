@@ -28,6 +28,8 @@ public class SearchResult {
 
     private Category category = new Category();
 
+    private String brand;
+
 
     public String getTitle() {
         return title;
@@ -133,5 +135,11 @@ public class SearchResult {
         this.category = category;
     }
 
+    public String getBrand() {
+        return brand;
+    }
 
+    public void setBrand(String brand) {
+        this.brand = brand;
+    }
 }

@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.jingdianbao.entity.DmpRequest;
 import com.jingdianbao.entity.DmpResult;
 import com.jingdianbao.entity.LoginAccount;
+import com.jingdianbao.entity.SearchResult;
 import com.jingdianbao.http.HttpClientFactory;
 
 import com.jingdianbao.util.CookieUtil;
@@ -19,6 +20,8 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicNameValuePair;
@@ -45,6 +48,8 @@ public class DmpService {
     private AccountService accountService;
     @Autowired
     private LoginService loginService;
+    @Autowired
+    HttpCrawlerService httpCrawlerService;
     @Autowired
     private LoginTask loginTask;
 
@@ -131,6 +136,60 @@ public class DmpService {
             jsonObject = HttpUtil.readJSONResponse(response);
             if (jsonObject.getIntValue("code") != 1) {
                 dmpResult.setErrorMessage("删除失败");
+            }
+        } catch (Exception e) {
+            LOGGER.error("", e);
+        }
+        return dmpResult;
+    }
+
+    public DmpResult crawlHttpNew(DmpRequest request) {
+        SearchResult searchResult = new SearchResult();
+        searchResult.setSku(request.getSku());
+        httpCrawlerService.crawlSkuDetail(searchResult);
+        DmpResult dmpResult = new DmpResult();
+        dmpResult.setSku(request.getSku());
+        dmpResult.setName(searchResult.getTitle());
+        dmpResult.setBrand(searchResult.getBrand());
+        dmpResult.setShop(searchResult.getShop());
+        dmpResult.setCategory(searchResult.getCategory().getLevel3());
+        dmpResult.setImg(searchResult.getImg());
+        CookieStore cookieStore = new BasicCookieStore();
+        LoginAccount loginAccount = accountService.loadRandomDmpAccount();
+        if (loginAccount != null) {
+            while (!loginService.testLogin(loginAccount.getUserName(), loginAccount.getPassword())) {
+                loginTask.addLoginTask(loginAccount);
+                if (accountService.accountCount() == loginTask.getTaskSize()) {
+                    return null;
+                }
+                loginAccount = accountService.loadRandomDmpAccount();
+            }
+        }
+        CookieUtil.loadCookie(request.getUserName(), request.getPassword(), cookieStore);
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectTimeout(10000).setConnectionRequestTimeout(10000)
+                .setSocketTimeout(10000).build();
+
+        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+        try {
+            HttpPost httpPost = new HttpPost("https://jzt.jd.com/dmp/new/tag/portrait/and/estimate");
+            httpPost.addHeader("Referer", "https://jzt.jd.com/dmp/labelManage.html");
+            httpPost.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+            httpPost.setConfig(requestConfig);
+            JSONObject postData = new JSONObject();
+            postData.put("tagId", 294);
+            JSONArray commitAttribute = new JSONArray();
+            commitAttribute.add("skus");
+            JSONArray skus = new JSONArray();
+            skus.add(request.getSku());
+            postData.put("commitAttribute", commitAttribute);
+            postData.put("crowdId", -1);
+            postData.put("skus", skus);
+            httpPost.setEntity(new StringEntity(postData.toJSONString(), ContentType.APPLICATION_JSON));
+            CloseableHttpResponse response = httpClient.execute(httpPost);
+            JSONObject jsonObject = HttpUtil.readJSONResponse(response);
+            if (jsonObject.getIntValue("code") == 1) {
+                dmpResult.setCoverCount(jsonObject.getJSONObject("data").getIntValue("totalUV"));
             }
         } catch (Exception e) {
             LOGGER.error("", e);

@@ -113,7 +113,7 @@ public class CrawlerController {
                           @RequestParam(value = "sku", required = false, defaultValue = "") String sku) {
         DmpRequest dmpRequest = new DmpRequest(userName, password, sku);
         JSONObject jsonObject = new JSONObject();
-        DmpResult dmpResult = dmpService.crawlHttp(dmpRequest);
+        DmpResult dmpResult = dmpService.crawlHttpNew(dmpRequest);
         if(dmpRequest==null){
             jsonObject.put("code", -1);
             jsonObject.put("message", "请稍后重试");

@@ -138,6 +138,7 @@ public class LoginService {
                 dmpResult.setErrorMessage("登录失败");
                 return false;
             } else {
+                LOGGER.error("================ 登录成功 ====================");
                 CookieUtil.saveCookie(userName, password, webDriver);
                 return true;
             }

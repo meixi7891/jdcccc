@@ -715,7 +715,7 @@ public class HttpCrawlerService implements CrawlerService {
     }
 
 
-    private void crawlSkuDetail(final SearchResult searchResult) {
+    public void crawlSkuDetail(final SearchResult searchResult) {
         String sku = searchResult.getSku();
         String url = "https://item.jd.com/" + sku + ".html";
         try {
@@ -726,6 +726,8 @@ public class HttpCrawlerService implements CrawlerService {
             if (shop == null || shop.isEmpty()) {
                 shop = doc.select("div[class=shopName]").text();
             }
+            String brand = doc.select("ul[id=parameter-brand]>li>a").text();
+            searchResult.setBrand(brand);
             searchResult.setShop(shop);
             Elements elements = doc.select("#crumb-wrap>div[class=w]>div[class=crumb fl clearfix] a");
             if (elements.size() > 2) {
@@ -1221,7 +1223,7 @@ public class HttpCrawlerService implements CrawlerService {
                         httpGet.addHeader("referer", "https://m.jd.com/");
                         httpGet.setConfig(requestConfig);
                         CloseableHttpResponse response = httpClient.execute(httpGet);
-                         reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
+                        reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
                         StringBuilder sb = new StringBuilder();
                         String line;
                         while ((line = reader.readLine()) != null) {
@@ -1246,7 +1248,7 @@ public class HttpCrawlerService implements CrawlerService {
             }
         } catch (Exception e) {
             LOGGER.error("", e);
-        }finally {
+        } finally {
             if (reader != null) {
                 try {
                     reader.close();
