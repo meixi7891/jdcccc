@@ -1,6 +1,5 @@
 package com.jingdianbao.service.impl;
 
-import ch.qos.logback.core.net.SyslogOutputStream;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
@@ -9,12 +8,11 @@ import com.jingdianbao.entity.SearchRequest;
 import com.jingdianbao.entity.SearchResult;
 import com.jingdianbao.http.HttpClientFactory;
 import com.jingdianbao.service.CrawlerService;
-import com.jingdianbao.util.CookieUtil;
+import com.jingdianbao.util.CookieTool;
 import com.jingdianbao.webdriver.WebDriverBuilder;
 import com.jingdianbao.entity.Category;
 import com.jingdianbao.webdriver.WebDriverActionDelegate;
 import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.CookieStore;
 import org.apache.http.client.config.RequestConfig;
@@ -61,6 +59,9 @@ public class HttpCrawlerService implements CrawlerService {
 
     @Value("${webdriver.screenShot.path}")
     private String PREFIX_FILE_PATH;
+
+    @Autowired
+    private CookieTool cookieTool;
 
     private RequestConfig requestConfig = RequestConfig.custom()
             .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
@@ -120,12 +121,12 @@ public class HttpCrawlerService implements CrawlerService {
                     .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
                     .setSocketTimeout(5000).build();
             CookieStore cookieStore = new BasicCookieStore();
-            CookieUtil.loadCookie("search", "PC", cookieStore);
+            cookieTool.loadCookie("search", "PC", cookieStore);
             CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
             int pageTotal = 0;
             HttpGet httpGet = new HttpGet(refer);
             httpGet.addHeader("Referer", refer);
-            httpGet.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+            httpGet.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
             httpGet.addHeader("Host", "search.jd.com");
             httpGet.addHeader("Upgrade-Insecure-Requests", "1");
             httpGet.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
@@ -186,7 +187,7 @@ public class HttpCrawlerService implements CrawlerService {
             //第一页第二屏
             httpClient = HttpClientFactory.getHttpClient();
             Map<String, String> header = new HashMap<>();
-            header.put("Cookie", CookieUtil.getCookieStr(cookieStore));
+            header.put("Cookie", cookieTool.getCookieStr(cookieStore));
             header.put("Host", "search.jd.com");
             header.put("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
             String urlStr = url + "&page=" + 2 + "&s=" + s;
@@ -469,8 +470,8 @@ public class HttpCrawlerService implements CrawlerService {
             String keyword = URLEncoder.encode(request.getKeyword(), "utf-8");
             String refer = "https://search.jd.com/Search?keyword=" + keyword + "&enc=utf-8&pvid=" + pvid;
             webDriver.get(refer);
-            CookieUtil.saveCookie("search", "PC", webDriver);
-            CookieUtil.loadCookie("search", "PC", webDriver);
+            cookieTool.saveCookie("search", "PC", webDriver);
+            cookieTool.loadCookie("search", "PC", webDriver);
             if (request.getSortType() != null && !"0".equals(request.getSortType())) {
                 webDriver.executeScript("SEARCH.sort('" + request.getSortType() + "')");
             }
@@ -575,7 +576,7 @@ public class HttpCrawlerService implements CrawlerService {
 
             }
         } finally {
-            webDriver.quit();
+            webDriverBuilder.returnDriver(webDriver);
         }
         resultList.forEach(searchResult -> {
             crawlSkuDetail(searchResult);

@@ -1,11 +1,9 @@
 package com.jingdianbao.service.impl;
 
-import com.alibaba.fastjson.JSONObject;
-import com.jingdianbao.entity.DmpRequest;
 import com.jingdianbao.entity.DmpResult;
 import com.jingdianbao.entity.LoginResult;
 import com.jingdianbao.http.HttpClientFactory;
-import com.jingdianbao.util.CookieUtil;
+import com.jingdianbao.util.CookieTool;
 import com.jingdianbao.util.HttpUtil;
 import com.jingdianbao.webdriver.WebDriverActionDelegate;
 import com.jingdianbao.webdriver.WebDriverBuilder;
@@ -44,21 +42,23 @@ public class LoginService {
     private WebDriverActionDelegate webDriverActionDelegate;
     @Autowired
     private CaptchaService captchaService;
+    @Autowired
+    private CookieTool cookieTool;
     @Value("${webdriver.screenShot.path}")
     private String PREFIX_FILE_PATH;
 
     public boolean testLogin(String userName, String password) {
         CookieStore cookieStore = new BasicCookieStore();
         try {
-            if (CookieUtil.hasCookie(userName, password)) {
-                CookieUtil.loadCookie(userName, password, cookieStore);
+            if (cookieTool.hasCookie(userName, password)) {
+                cookieTool.loadCookie(userName, password, cookieStore);
                 RequestConfig requestConfig = RequestConfig.custom()
                         .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
                         .setSocketTimeout(5000).build();
                 CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
                 HttpPost httpPost = new HttpPost("https://jzt.jd.com/dmp/tag/skuinfo/list");
                 httpPost.addHeader("Referer", "https://jzt.jd.com/dmp/newtag/list");
-                httpPost.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+                httpPost.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
                 httpPost.setConfig(requestConfig);
                 List<NameValuePair> nvps = new ArrayList<>();
                 nvps.add(new BasicNameValuePair("skuId", "23536794365"));
@@ -87,7 +87,11 @@ public class LoginService {
             LOGGER.error("================ start login by web driver !====================");
             DmpResult dmpResult = new DmpResult();
             webDriver = webDriverBuilder.getWebDriver();
-            CookieUtil.loadCookie(userName, password, webDriver);
+            if (webDriver == null) {
+                LOGGER.error("================ start login by web driver failed !====================");
+                return false;
+            }
+            cookieTool.loadCookie(userName, password, webDriver);
             webDriver.get("https://jzt.jd.com/dmp/newtag/list");
             if (webDriverActionDelegate.waitElementDisplayed("//i[@class='icon-user']", webDriver, 5)) {
                 webDriver.quit();
@@ -139,21 +143,21 @@ public class LoginService {
                 return false;
             } else {
                 LOGGER.error("================ 登录成功 ====================");
-                CookieUtil.saveCookie(userName, password, webDriver);
+                cookieTool.saveCookie(userName, password, webDriver);
                 return true;
             }
         } catch (Exception e) {
             LOGGER.error("", e);
             webDriverActionDelegate.takeFullScreenShot(webDriver);
             try {
-                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "utf-8");
+                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "gbk");
             } catch (IOException e1) {
                 LOGGER.error("", e);
                 return false;
             }
         } finally {
             if (webDriver != null) {
-                webDriver.quit();
+                webDriverBuilder.returnDriver(webDriver);
             }
         }
         return false;
@@ -175,43 +179,44 @@ public class LoginService {
         try {
             LOGGER.error("================ start login by web driver !====================");
             webDriver = webDriverBuilder.getWebDriver();
-            webDriver.get("https://passport.shop.jd.com/login/index.action");
+            if (webDriver == null) {
+                LOGGER.error("================ start login by web driver failed !====================");
+                loginResult.setStatus(-3);
+                loginResult.setMessage("chrome资源不足");
+            }
+            webDriver.get("http://passport.jd.com/common/loginPage?from=pop_vender&regTag=2&ReturnUrl=https://shop.jd.com");
             Point frameLocation = new Point(0, 0);
             webDriverActionDelegate.sleep(1000);
-            webDriver.findElementById("account-login").click();
-            if (webDriverActionDelegate.waitElementDisplayed("//iframe", webDriver, 5)) {
-                WebElement frame = webDriver.findElementByXPath("//iframe");
-                frameLocation = frame.getLocation();
-                webDriver.switchTo().frame("loginFrame");
-                webDriver.findElementById("loginname").sendKeys(userName);
-                webDriverActionDelegate.sleep(1000);
-                webDriver.findElementById("nloginpwd").sendKeys(password);
-                webDriverActionDelegate.sleep(1000);
-                webDriver.findElementById("paipaiLoginSubmit").click();
-                if (webDriverActionDelegate.waitElementDisplayed("//img[@id='JD_Verification1']", webDriver, 5)) {
-                    LOGGER.error("================ verifyCode needed !====================");
-                    for (int i = 0; i < 3; i++) {
-                        verifyCode("//img[@id='JD_Verification1']", webDriver, frameLocation);
-                        if (i == 2 && webDriverActionDelegate.isElementDisplayed("//label[@id='authcode_error']", webDriver)) {
-                            LOGGER.error("================ 打码3次失败 !====================");
-                            loginResult.setMessage("打码3次失败");
-                            loginResult.setStatus(-1);
-                            return loginResult;
-                        }
-                        if (webDriverActionDelegate.isElementDisplayed("//label[@id='authcode_error']", webDriver)) {
-                            continue;
-                        } else {
-                            break;
-                        }
+            webDriver.findElementById("loginname").sendKeys(userName);
+            webDriverActionDelegate.sleep(1000);
+            webDriver.findElementById("nloginpwd").sendKeys(password);
+            webDriverActionDelegate.sleep(1000);
+            webDriver.findElementById("paipaiLoginSubmit").click();
+            if (webDriverActionDelegate.waitElementDisplayed("//img[@id='JD_Verification1']", webDriver, 5)) {
+                LOGGER.error("================ verifyCode needed !====================");
+                for (int i = 0; i < 3; i++) {
+                    webDriver.findElementById("JD_Verification1").click();
+                    verifyCode("//img[@id='JD_Verification1']", webDriver, frameLocation);
+                    if (i == 2 && webDriverActionDelegate.isElementDisplayed("//label[@id='authcode_error']", webDriver)) {
+                        LOGGER.error("================ 打码3次失败 !====================");
+                        loginResult.setMessage("打码3次失败");
+                        loginResult.setStatus(-1);
+                        return loginResult;
+                    }
+                    if (webDriverActionDelegate.waitElementDisplayed("//img[@id='JD_Verification1']", webDriver, 3)) {
+                        continue;
+                    } else {
+                        break;
                     }
                 }
-                if (webDriverActionDelegate.isElementDisplayed("//label[@id='loginpwd_error']", webDriver)) {
-                    loginResult.setStatus(-1);
-                    loginResult.setMessage(webDriver.findElementByXPath("//label[@id='loginpwd_error']").getText());
-                    LOGGER.error("================ 密码错误 ====================");
-                    return loginResult;
-                }
             }
+            if (webDriverActionDelegate.isElementDisplayed("//label[@id='loginpwd_error']", webDriver)) {
+                loginResult.setStatus(-1);
+                loginResult.setMessage(webDriver.findElementByXPath("//label[@id='loginpwd_error']").getText());
+                LOGGER.error("================ 密码错误 ====================");
+                return loginResult;
+            }
+
             if (webDriverActionDelegate.waitElementDisplayed("//div[@class='wb-per']", webDriver, 5)) {
                 loginResult.setStatus(-2);
                 String message = webDriver.findElementByXPath("//div[@class='wb-per']").getText();
@@ -220,7 +225,8 @@ public class LoginService {
                 return loginResult;
             }
             if (webDriverActionDelegate.waitElementDisplayed("//div[@id='tab_phoneV']", webDriver, 5)) {
-                CookieUtil.saveSellerCookie(userName, password, webDriver);
+                cookieTool.saveSellerCookie(userName, password, webDriver);
+                LOGGER.error("================ 登录商家后台成功 ====================");
                 loginResult.setStatus(0);
                 loginResult.setMessage("");
                 return loginResult;
@@ -242,13 +248,13 @@ public class LoginService {
             LOGGER.error("", e);
             webDriverActionDelegate.takeFullScreenShot(webDriver);
             try {
-                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "utf-8");
+                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "gbk");
             } catch (IOException e1) {
                 LOGGER.error("", e);
             }
         } finally {
             if (webDriver != null) {
-                webDriver.quit();
+                webDriverBuilder.returnDriver(webDriver);
             }
         }
         return loginResult;

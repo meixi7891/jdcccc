@@ -27,6 +27,7 @@ public class WebDriverActionDelegate {
 
 
     private BASE64Encoder encoder = new sun.misc.BASE64Encoder();
+
     /**
      * @param driver
      * @param url
@@ -370,7 +371,6 @@ public class WebDriverActionDelegate {
     }
 
 
-
     public static boolean isElementDisplayed(String xpath, WebDriver webDriver) {
         try {
             WebElement webElement = webDriver.findElement(By.xpath(xpath));
@@ -418,7 +418,6 @@ public class WebDriverActionDelegate {
     public void addCookie(WebDriver driver, Cookie cookie) {
         driver.manage().addCookie(cookie);
     }
-
 
     OutputType<File> FILE = new OutputType<File>() {
         public File convertFromBase64Png(String base64Png) {

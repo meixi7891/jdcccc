@@ -2,6 +2,7 @@ com\jingdianbao\entity\SearchResult.class
 com\jingdianbao\captcha\Util$HttpResp.class
 com\jingdianbao\http\HttpClientFactory$1.class
 com\jingdianbao\entity\LoginResult.class
+com\jingdianbao\util\CookieTool.class
 com\jingdianbao\webdriver\WebDriverActionDelegate.class
 com\jingdianbao\captcha\Api.class
 com\jingdianbao\Main.class
@@ -14,7 +15,6 @@ com\jingdianbao\captcha\Util.class
 com\jingdianbao\service\impl\LoginService.class
 com\jingdianbao\service\impl\HttpCrawlerService.class
 com\jingdianbao\entity\LoginAccount.class
-com\jingdianbao\util\CookieUtil.class
 com\jingdianbao\webdriver\WebDriverActionDelegate$1.class
 com\jingdianbao\entity\DmpResult.class
 com\jingdianbao\entity\SearchMergedResult.class

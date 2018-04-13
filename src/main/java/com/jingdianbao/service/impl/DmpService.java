@@ -8,11 +8,8 @@ import com.jingdianbao.entity.LoginAccount;
 import com.jingdianbao.entity.SearchResult;
 import com.jingdianbao.http.HttpClientFactory;
 
-import com.jingdianbao.util.CookieUtil;
+import com.jingdianbao.util.CookieTool;
 import com.jingdianbao.util.HttpUtil;
-import com.jingdianbao.webdriver.WebDriverActionDelegate;
-import com.jingdianbao.webdriver.WebDriverBuilder;
-import org.apache.commons.io.FileUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.CookieStore;
 import org.apache.http.client.config.RequestConfig;
@@ -27,16 +24,10 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.openqa.selenium.*;
-import org.openqa.selenium.NoSuchElementException;
-import org.openqa.selenium.chrome.ChromeDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
-import java.io.*;
 
 import java.util.*;
 
@@ -53,6 +44,9 @@ public class DmpService {
     @Autowired
     private LoginTask loginTask;
 
+    @Autowired
+    private CookieTool cookieTool;
+
     public DmpResult crawlHttp(DmpRequest request) {
         DmpResult dmpResult = new DmpResult();
         CookieStore cookieStore = new BasicCookieStore();
@@ -66,7 +60,7 @@ public class DmpService {
                 loginAccount = accountService.loadRandomDmpAccount();
             }
         }
-        CookieUtil.loadCookie(request.getUserName(), request.getPassword(), cookieStore);
+        cookieTool.loadCookie(request.getUserName(), request.getPassword(), cookieStore);
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(10000).setConnectionRequestTimeout(10000)
                 .setSocketTimeout(10000).build();
@@ -74,7 +68,7 @@ public class DmpService {
         CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
         HttpPost httpPost = new HttpPost("https://jzt.jd.com/dmp/tag/skuinfo/list");
         httpPost.addHeader("Referer", "https://jzt.jd.com/dmp/newtag/list");
-        httpPost.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+        httpPost.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
         httpPost.setConfig(requestConfig);
         List<NameValuePair> nvps = new ArrayList<>();
         nvps.add(new BasicNameValuePair("skuId", request.getSku()));
@@ -99,7 +93,7 @@ public class DmpService {
             httpClient = HttpClientFactory.getHttpClient();
             httpPost = new HttpPost("https://jzt.jd.com/dmp/tag/createtag");
             httpPost.addHeader("Referer", "https://jzt.jd.com/dmp/newtag/list");
-            httpPost.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+            httpPost.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
             httpPost.setConfig(requestConfig);
             nvps = new ArrayList<>();
             nvps.add(new BasicNameValuePair("tagTitle", tagName));
@@ -117,7 +111,7 @@ public class DmpService {
             String tagId = jsonObject.getString("tagId");
             HttpGet httpGet = new HttpGet("https://jzt.jd.com/dmp/newtag/showPortrait?tag_id=" + tagId + "&_=" + System.currentTimeMillis());
             httpGet.addHeader("Referer", "https://jzt.jd.com/dmp/newtag/list");
-            httpGet.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+            httpGet.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
             httpGet.setConfig(requestConfig);
             httpClient = HttpClientFactory.getHttpClient();
             response = httpClient.execute(httpGet);
@@ -126,7 +120,7 @@ public class DmpService {
 
             httpPost = new HttpPost("https://jzt.jd.com/dmp/tag/deltag");
             httpPost.addHeader("Referer", "https://jzt.jd.com/dmp/newtag/list");
-            httpPost.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+            httpPost.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
             httpPost.setConfig(requestConfig);
             nvps = new ArrayList<>();
             nvps.add(new BasicNameValuePair("tagId", tagId));
@@ -165,7 +159,7 @@ public class DmpService {
                 loginAccount = accountService.loadRandomDmpAccount();
             }
         }
-        CookieUtil.loadCookie(request.getUserName(), request.getPassword(), cookieStore);
+        cookieTool.loadCookie(request.getUserName(), request.getPassword(), cookieStore);
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(10000).setConnectionRequestTimeout(10000)
                 .setSocketTimeout(10000).build();
@@ -174,7 +168,7 @@ public class DmpService {
         try {
             HttpPost httpPost = new HttpPost("https://jzt.jd.com/dmp/new/tag/portrait/and/estimate");
             httpPost.addHeader("Referer", "https://jzt.jd.com/dmp/labelManage.html");
-            httpPost.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+            httpPost.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
             httpPost.setConfig(requestConfig);
             JSONObject postData = new JSONObject();
             postData.put("tagId", 294);
