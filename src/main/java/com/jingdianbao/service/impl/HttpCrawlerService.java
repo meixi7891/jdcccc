@@ -1,6 +1,5 @@
 package com.jingdianbao.service.impl;
 
-import ch.qos.logback.core.net.SyslogOutputStream;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
@@ -9,7 +8,7 @@ import com.jingdianbao.entity.SearchRequest;
 import com.jingdianbao.entity.SearchResult;
 import com.jingdianbao.http.HttpClientFactory;
 import com.jingdianbao.service.CrawlerService;
-import com.jingdianbao.util.CookieUtil;
+import com.jingdianbao.util.CookieTool;
 import com.jingdianbao.webdriver.WebDriverBuilder;
 import com.jingdianbao.entity.Category;
 import com.jingdianbao.webdriver.WebDriverActionDelegate;
@@ -61,6 +60,9 @@ public class HttpCrawlerService implements CrawlerService {
     @Value("${webdriver.screenShot.path}")
     private String PREFIX_FILE_PATH;
 
+    @Autowired
+    private CookieTool cookieTool;
+
     private RequestConfig requestConfig = RequestConfig.custom()
             .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
             .setSocketTimeout(5000).build();
@@ -87,12 +89,29 @@ public class HttpCrawlerService implements CrawlerService {
 
     private List<SearchResult> searchGoods(SearchRequest request) {
         List<SearchResult> resultList = new ArrayList<>();
+        BufferedReader reader = null;
         try {
             String pvid = uuid();
             String keyword = URLEncoder.encode(request.getKeyword(), "utf-8");
             String refer = "https://search.jd.com/Search?keyword=" + keyword + "&enc=utf-8&pvid=" + pvid;
             String url = "https://search.jd.com/s_new.php?keyword=" + keyword + "&enc=utf-8&qrst=1&rt=1&stop=1&vt=2&scrolling=y&click=0";
             int s = 1;
+            if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+                refer = refer + "&psort=" + request.getSortType();
+                url = url + "&psort=" + request.getSortType();
+            }
+            if (!request.getPriceLow().isEmpty() || !request.getPriceHigh().isEmpty()) {
+                if (!request.getPriceLow().isEmpty() && request.getPriceHigh().isEmpty()) {
+                    refer = refer + "&ev=exprice_" + request.getPriceLow() + "gt%5E";
+                    url = url + "&ev=exprice_" + request.getPriceLow() + "gt%5E";
+                } else if (request.getPriceLow().isEmpty() && !request.getPriceHigh().isEmpty()) {
+                    refer = refer + "&ev=exprice_0-" + request.getPriceHigh() + "%5E";
+                    url = url + "&ev=exprice_0-" + request.getPriceHigh() + "%5E";
+                } else {
+                    refer = refer + "&ev=exprice_" + request.getPriceLow() + "-" + request.getPriceHigh() + "%5E";
+                    url = url + "&ev=exprice_" + request.getPriceLow() + "-" + request.getPriceHigh() + "%5E";
+                }
+            }
             String sku = request.getSku();
             String pa = "<li\\s+class=\"gl-item(\\s+gl-item-presell)?\"\\s+data-sku=\"\\d+\"\\s+data-spu=\"\\d+\" data-pid=\"\\d+\">|<li\\s+data-sku=\"\\d+\"\\s+class=\"gl-item(\\s+gl-item-presell)?\">";
             Pattern p = Pattern.compile(pa);
@@ -102,25 +121,23 @@ public class HttpCrawlerService implements CrawlerService {
                     .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
                     .setSocketTimeout(5000).build();
             CookieStore cookieStore = new BasicCookieStore();
-            CookieUtil.loadCookie("search", "PC", cookieStore);
+            cookieTool.loadCookie("search", "PC", cookieStore);
             CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
             int pageTotal = 0;
-
             HttpGet httpGet = new HttpGet(refer);
             httpGet.addHeader("Referer", refer);
-            httpGet.addHeader("Cookie", CookieUtil.getCookieStr(cookieStore));
+            httpGet.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
             httpGet.addHeader("Host", "search.jd.com");
             httpGet.addHeader("Upgrade-Insecure-Requests", "1");
             httpGet.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
             httpGet.setConfig(requestConfig);
             CloseableHttpResponse response = httpClient.execute(httpGet);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
+            reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
                 sb.append(line);
             }
-            reader.close();
             String result = sb.toString();
             Document document = Jsoup.parse(result);
             String pageStr = document.select("div[id=J_topPage]>span>i").text();
@@ -170,7 +187,7 @@ public class HttpCrawlerService implements CrawlerService {
             //第一页第二屏
             httpClient = HttpClientFactory.getHttpClient();
             Map<String, String> header = new HashMap<>();
-            header.put("Cookie", CookieUtil.getCookieStr(cookieStore));
+            header.put("Cookie", cookieTool.getCookieStr(cookieStore));
             header.put("Host", "search.jd.com");
             header.put("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
             String urlStr = url + "&page=" + 2 + "&s=" + s;
@@ -179,7 +196,6 @@ public class HttpCrawlerService implements CrawlerService {
             }
             result = get(urlStr, refer, requestConfig, httpClient, header);
             document = Jsoup.parse(result);
-            httpClient.close();
             sb = new StringBuilder();
             elements = document.select("li[class~=gl-item]");
             for (Element e : elements) {
@@ -232,7 +248,6 @@ public class HttpCrawlerService implements CrawlerService {
                     }
                     result = get(urlStr, refer, requestConfig, httpClient, header);
                     document = Jsoup.parse(result);
-                    httpClient.close();
                     sb = new StringBuilder();
                     elements = document.select("li[class~=gl-item]");
                     for (Element e : elements) {
@@ -241,7 +256,6 @@ public class HttpCrawlerService implements CrawlerService {
                         if (e.select("span[class=p-promo-flag]").isEmpty()) {
                             s++;
                             rank++;
-
                             if ((request.getType().equals("goods") && sku.equals(e.attr("data-sku"))) || (request.getType().equals("shop") && !e.select("a[class~=curr-shop]").isEmpty() && e.select("a[class~=curr-shop]").text().contains(request.getShop()))) {
                                 SearchResult searchResult = new SearchResult();
                                 searchResult.setPage(page + 1);
@@ -385,6 +399,14 @@ public class HttpCrawlerService implements CrawlerService {
             LOGGER.error("", e);
         } catch (Exception e) {
             LOGGER.error("", e);
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    LOGGER.error("", e);
+                }
+            }
         }
         resultList.forEach(sr -> {
             crawlSkuDetail(sr);
@@ -406,7 +428,6 @@ public class HttpCrawlerService implements CrawlerService {
                 }
                 String result = get(urlStr, refer, requestConfig, httpClient, header);
                 Document document = Jsoup.parse(result);
-                httpClient.close();
                 sb = new StringBuilder();
                 Elements elements = document.select("li[class~=gl-item]");
                 for (Element e : elements) {
@@ -449,8 +470,8 @@ public class HttpCrawlerService implements CrawlerService {
             String keyword = URLEncoder.encode(request.getKeyword(), "utf-8");
             String refer = "https://search.jd.com/Search?keyword=" + keyword + "&enc=utf-8&pvid=" + pvid;
             webDriver.get(refer);
-            CookieUtil.saveCookie("search", "PC", webDriver);
-            CookieUtil.loadCookie("search", "PC", webDriver);
+            cookieTool.saveCookie("search", "PC", webDriver);
+            cookieTool.loadCookie("search", "PC", webDriver);
             if (request.getSortType() != null && !"0".equals(request.getSortType())) {
                 webDriver.executeScript("SEARCH.sort('" + request.getSortType() + "')");
             }
@@ -555,7 +576,7 @@ public class HttpCrawlerService implements CrawlerService {
 
             }
         } finally {
-            webDriver.quit();
+            webDriverBuilder.returnDriver(webDriver);
         }
         resultList.forEach(searchResult -> {
             crawlSkuDetail(searchResult);
@@ -695,7 +716,7 @@ public class HttpCrawlerService implements CrawlerService {
     }
 
 
-    private void crawlSkuDetail(final SearchResult searchResult) {
+    public void crawlSkuDetail(final SearchResult searchResult) {
         String sku = searchResult.getSku();
         String url = "https://item.jd.com/" + sku + ".html";
         try {
@@ -706,6 +727,8 @@ public class HttpCrawlerService implements CrawlerService {
             if (shop == null || shop.isEmpty()) {
                 shop = doc.select("div[class=shopName]").text();
             }
+            String brand = doc.select("ul[id=parameter-brand]>li>a").text();
+            searchResult.setBrand(brand);
             searchResult.setShop(shop);
             Elements elements = doc.select("#crumb-wrap>div[class=w]>div[class=crumb fl clearfix] a");
             if (elements.size() > 2) {
@@ -724,38 +747,40 @@ public class HttpCrawlerService implements CrawlerService {
     }
 
     private void crawlComment(final SearchResult searchResult) {
-        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
-        String url = "https://sclub.jd.com/comment/productPageComments.action?callback=fetchJSON_comment98vv225&productId=" + searchResult.getSku() + "&score=0&sortType=5&page=0&pageSize=10&isShadowSku=0&rid=0&fold=2";
-        try {
-            HttpGet httpGet = new HttpGet(url);
-            httpGet.addHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
-            httpGet.setConfig(requestConfig);
-            System.out.println(url);
-            CloseableHttpResponse response = httpClient.execute(httpGet);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "gbk"));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line);
-            }
-            reader.close();
-            String result = sb.toString();
-            System.out.println(result);
-            Pattern p = Pattern.compile("\\(.*\\);");
-            Matcher matcher = p.matcher(result);
-            if (matcher.find()) {
-                String json = matcher.group().replace("(", "").replace(");", "");
-                JSONObject jsonObject = JSONObject.parseObject(json);
-                int commentCount = jsonObject.getJSONObject("productCommentSummary").getIntValue("commentCount");
-                searchResult.setComment(commentCount);
-            }
-        } catch (Exception e) {
-            LOGGER.error("", e);
-        }
+        crawlCommentH5(searchResult);
+//        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+//        String url = "https://sclub.jd.com/comment/productPageComments.action?callback=fetchJSON_comment98vv225&productId=" + searchResult.getSku() + "&score=0&sortType=5&page=0&pageSize=10&isShadowSku=0&rid=0&fold=2";
+//        try {
+//            HttpGet httpGet = new HttpGet(url);
+//            httpGet.addHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
+//            httpGet.setConfig(requestConfig);
+//            System.out.println(url);
+//            CloseableHttpResponse response = httpClient.execute(httpGet);
+//            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "gbk"));
+//            StringBuilder sb = new StringBuilder();
+//            String line;
+//            while ((line = reader.readLine()) != null) {
+//                sb.append(line);
+//            }
+//            reader.close();
+//            String result = sb.toString();
+//            System.out.println(result);
+//            Pattern p = Pattern.compile("\\(.*\\);");
+//            Matcher matcher = p.matcher(result);
+//            if (matcher.find()) {
+//                String json = matcher.group().replace("(", "").replace(");", "");
+//                JSONObject jsonObject = JSONObject.parseObject(json);
+//                int commentCount = jsonObject.getJSONObject("productCommentSummary").getIntValue("commentCount");
+//                searchResult.setComment(commentCount);
+//            }
+//        } catch (Exception e) {
+//            LOGGER.error("", e);
+//        }
     }
 
     private void crawlCommentH5(final SearchResult searchResult) {
         CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+        BufferedReader reader = null;
         try {
             HttpPost httpPost = new HttpPost("https://item.m.jd.com/newComments/newCommentsDetail.json");
             httpPost.addHeader("Referer", "https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
@@ -781,18 +806,25 @@ public class HttpCrawlerService implements CrawlerService {
 //            httpPost.setEntity(reqEntity);
 
             CloseableHttpResponse response = httpClient.execute(httpPost);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
+            reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
                 sb.append(line);
             }
-            reader.close();
             JSONObject jsonObject = JSONObject.parseObject(sb.toString());
             int commentCount = jsonObject.getJSONObject("wareDetailComment").getIntValue("allCnt");
             searchResult.setComment(commentCount);
         } catch (Exception e) {
             LOGGER.error("", e);
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    LOGGER.error("", e);
+                }
+            }
         }
     }
 
@@ -802,18 +834,18 @@ public class HttpCrawlerService implements CrawlerService {
                 .setSocketTimeout(5000).build();
         CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
         String url = "https://club.jd.com/comment/getProductPageFoldComments.action?callback=jQuery1552332&productId=" + searchResult.getSku() + "&score=0&sortType=5&page=0&pageSize=5&_=1521114318952";
+        BufferedReader reader = null;
         try {
             HttpGet httpGet = new HttpGet(url);
             httpGet.addHeader("Referer", "https://item.jd.com/" + searchResult.getSku() + ".html");
             httpGet.setConfig(requestConfig);
             CloseableHttpResponse response = httpClient.execute(httpGet);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "gbk"));
+            reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "gbk"));
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
                 sb.append(line);
             }
-            reader.close();
             String result = sb.toString();
             System.out.println(result);
             Pattern p = Pattern.compile("\\(.*\\);");
@@ -848,6 +880,14 @@ public class HttpCrawlerService implements CrawlerService {
             }
         } catch (Exception e) {
             LOGGER.error("", e);
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    LOGGER.error("", e);
+                }
+            }
         }
     }
 
@@ -856,16 +896,27 @@ public class HttpCrawlerService implements CrawlerService {
         httpGet.addHeader("Referer", refer);
         httpGet.addHeader("Host", "search.jd.com");
         httpGet.setConfig(requestConfig);
-        System.out.println(url);
-        CloseableHttpResponse response = httpClient.execute(httpGet);
-        BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            sb.append(line);
+        BufferedReader reader = null;
+        try {
+            CloseableHttpResponse response = httpClient.execute(httpGet);
+            reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw e;
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    LOGGER.error("", e);
+                }
+            }
         }
-        reader.close();
-        return sb.toString();
     }
 
     private String get(String url, String refer, RequestConfig requestConfig, CloseableHttpClient httpClient, Map<String, String> header) throws Exception {
@@ -876,17 +927,24 @@ public class HttpCrawlerService implements CrawlerService {
             httpGet.addHeader(entry.getKey(), entry.getValue());
         }
         httpGet.setConfig(requestConfig);
-        System.out.println(url);
-        CloseableHttpResponse response = httpClient.execute(httpGet);
-        response.getAllHeaders();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            sb.append(line);
+        BufferedReader reader = null;
+        try {
+            CloseableHttpResponse response = httpClient.execute(httpGet);
+            response.getAllHeaders();
+            reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw e;
+        } finally {
+            if (reader != null) {
+                reader.close();
+            }
         }
-        reader.close();
-        return sb.toString();
     }
 
     private List<SearchResult> searchH5(SearchRequest request) {
@@ -905,7 +963,7 @@ public class HttpCrawlerService implements CrawlerService {
             int adCount = 0;
             out:
             for (int i = 1; i <= 100; i++) {
-                JSONObject jsonObject = JSONObject.parseObject(searchH5(request.getKeyword(), i));
+                JSONObject jsonObject = JSONObject.parseObject(searchH5(request.getKeyword(), i, request));
                 String value = jsonObject.getString("value");
                 JSONObject result = JSONObject.parseObject(value);
                 JSONArray array = result.getJSONObject("wareList").getJSONArray("wareList");
@@ -932,7 +990,6 @@ public class HttpCrawlerService implements CrawlerService {
                         }
                     }
                 }
-                LOGGER.info(result.toJSONString());
             }
         } catch (Exception e) {
             LOGGER.error("", e);
@@ -947,7 +1004,7 @@ public class HttpCrawlerService implements CrawlerService {
             int adCount = 0;
             out:
             for (int i = 1; i <= 50; i++) {
-                JSONObject jsonObject = JSONObject.parseObject(searchH5(request.getKeyword(), i));
+                JSONObject jsonObject = JSONObject.parseObject(searchH5(request.getKeyword(), i, request));
                 String value = jsonObject.getString("value");
                 JSONObject result = JSONObject.parseObject(value);
                 JSONArray array = result.getJSONObject("wareList").getJSONArray("wareList");
@@ -984,7 +1041,6 @@ public class HttpCrawlerService implements CrawlerService {
                         }
                     }
                 }
-                LOGGER.info(result.toJSONString());
             }
 
         } catch (Exception e) {
@@ -1019,7 +1075,8 @@ public class HttpCrawlerService implements CrawlerService {
 //        return "";
 //    }
 
-    private String searchH5(String keyword, int page) {
+
+    private String searchH5(String keyword, int page, SearchRequest request) {
         CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
         HttpPost post = new HttpPost("https://so.m.jd.com/ware/searchList.action");
         List<NameValuePair> nvps = new ArrayList<>();
@@ -1033,20 +1090,42 @@ public class HttpCrawlerService implements CrawlerService {
         } else {
             nvps.add(new BasicNameValuePair("keyword", keyword));
         }
-
+        if (!request.getPriceLow().isEmpty() || !request.getPriceHigh().isEmpty()) {
+            JSONArray jsonArray = new JSONArray();
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("inputprice", "true");
+            if (!request.getPriceLow().isEmpty() && request.getPriceHigh().isEmpty()) {
+                jsonObject.put("min", request.getPriceLow());
+            } else if (request.getPriceLow().isEmpty() && !request.getPriceHigh().isEmpty()) {
+                jsonObject.put("max", request.getPriceHigh());
+            } else {
+                jsonObject.put("min", request.getPriceLow());
+                jsonObject.put("max", request.getPriceHigh());
+            }
+            jsonArray.add(jsonObject);
+            nvps.add(new BasicNameValuePair("price", jsonArray.toJSONString()));
+        }
+        BufferedReader reader = null;
         try {
             post.setEntity(new UrlEncodedFormEntity(nvps, "utf-8"));
             CloseableHttpResponse response = httpClient.execute(post);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
+            reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
                 sb.append(line);
             }
-            reader.close();
             return sb.toString();
         } catch (Exception e) {
             LOGGER.error("", e);
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    LOGGER.error("", e);
+                }
+            }
         }
         return "";
     }
@@ -1091,7 +1170,7 @@ public class HttpCrawlerService implements CrawlerService {
             int adCount = 0;
             out:
             for (int i = 1; i <= 100; i++) {
-                JSONObject jsonObject = JSONObject.parseObject(searchH5(searchResult.getKeyword(), i));
+                JSONObject jsonObject = JSONObject.parseObject(searchH5(searchResult.getKeyword(), i, request));
                 String value = jsonObject.getString("value");
                 JSONObject result = JSONObject.parseObject(value);
                 JSONArray array = result.getJSONObject("wareList").getJSONArray("wareList");
@@ -1124,6 +1203,7 @@ public class HttpCrawlerService implements CrawlerService {
 
     private String searchCategoryUrl(Category category) {
         String url = "https://so.m.jd.com/category/all.html?searchFrom=home";
+        BufferedReader reader = null;
         try {
             String cid = "";
             Document doc = Jsoup.connect(url).timeout(30000).get();
@@ -1144,13 +1224,12 @@ public class HttpCrawlerService implements CrawlerService {
                         httpGet.addHeader("referer", "https://m.jd.com/");
                         httpGet.setConfig(requestConfig);
                         CloseableHttpResponse response = httpClient.execute(httpGet);
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
+                        reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
                         StringBuilder sb = new StringBuilder();
                         String line;
                         while ((line = reader.readLine()) != null) {
                             sb.append(line);
                         }
-                        reader.close();
                         jsonObject = JSON.parseObject(sb.toString());
                         JSONObject jsonObject1 = jsonObject.getJSONObject("catalogBranch");
                         JSONArray jsonArray = jsonObject1.getJSONArray("data");
@@ -1170,6 +1249,14 @@ public class HttpCrawlerService implements CrawlerService {
             }
         } catch (Exception e) {
             LOGGER.error("", e);
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (IOException e) {
+                    LOGGER.error("", e);
+                }
+            }
         }
         return "";
     }

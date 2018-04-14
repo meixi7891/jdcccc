@@ -2,15 +2,20 @@ package com.jingdianbao.redis;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 
+import javax.annotation.PostConstruct;
+
+@Component
 public class RedisClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(RedisClient.class);
-    private static RedisClient redisClient = null;
-    private static String ADDR = "120.79.225.173";
-    //Redis的端口号
+    @Value("${redis.address}")
+    private  String ADDR = "120.79.225.173";
+    @Value("${redis.port}")
     private static int PORT = 6379;
 
     //可用连接实例的最大数目，默认值为8；
@@ -30,7 +35,8 @@ public class RedisClient {
 
     private JedisPool jedisPool;
 
-    private RedisClient() {
+    @PostConstruct
+    public void init() {
         try {
             JedisPoolConfig config = new JedisPoolConfig();
             config.setMaxTotal(MAX_ACTIVE);
@@ -42,16 +48,16 @@ public class RedisClient {
         }
     }
 
-    public static RedisClient getRedesClient() {
-        if (redisClient == null) {
-            synchronized (RedisClient.class) {
-                if (redisClient == null) {
-                    redisClient = new RedisClient();
-                }
-            }
-        }
-        return redisClient;
-    }
+//    public static RedisClient getRedesClient() {
+//        if (redisClient == null) {
+//            synchronized (RedisClient.class) {
+//                if (redisClient == null) {
+//                    redisClient = new RedisClient();
+//                }
+//            }
+//        }
+//        return redisClient;
+//    }
 
     public Jedis getJedis(){
         return jedisPool.getResource();

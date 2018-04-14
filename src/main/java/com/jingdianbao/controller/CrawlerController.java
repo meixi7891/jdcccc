@@ -5,6 +5,10 @@ import com.jingdianbao.entity.*;
 import com.jingdianbao.service.impl.DmpService;
 import com.jingdianbao.service.impl.HttpCrawlerService;
 
+import com.jingdianbao.service.impl.LoginService;
+import com.jingdianbao.util.CookieTool;
+import com.jingdianbao.webdriver.WebDriverBuilder;
+import org.openqa.selenium.chrome.ChromeDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +30,15 @@ public class CrawlerController {
     @Autowired
     private DmpService dmpService;
 
+    @Autowired
+    private LoginService loginService;
+
+    @Autowired
+    private WebDriverBuilder webDriverBuilder;
+
+    @Autowired
+    private CookieTool cookieTool;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerController.class);
 
     @RequestMapping("/search")
@@ -35,9 +48,11 @@ public class CrawlerController {
                              @RequestParam(value = "keyword", required = false, defaultValue = "") String keyword,
                              @RequestParam(value = "sku", required = false, defaultValue = "") String sku,
                              @RequestParam(value = "sortType", required = false, defaultValue = "") String sortType,
-                             @RequestParam(value = "shop", required = false, defaultValue = "") String shop) {
+                             @RequestParam(value = "shop", required = false, defaultValue = "") String shop,
+                             @RequestParam(value = "priceStart", required = false, defaultValue = "") String priceStart,
+                             @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd) {
 
-        SearchRequest request = new SearchRequest(type, source, keyword, sku, sortType, shop);
+        SearchRequest request = new SearchRequest(type, source, keyword, sku, sortType, shop, priceStart, priceEnd);
         List<SearchResult> resultList = new ArrayList<>();
         JSONObject jsonObject = new JSONObject();
         try {
@@ -60,9 +75,11 @@ public class CrawlerController {
             @RequestParam(value = "keyword", required = false, defaultValue = "") String keyword,
             @RequestParam(value = "sku", required = false, defaultValue = "") String sku,
             @RequestParam(value = "sortType", required = false, defaultValue = "") String sortType,
-            @RequestParam(value = "shop", required = false, defaultValue = "") String shop) {
+            @RequestParam(value = "shop", required = false, defaultValue = "") String shop,
+            @RequestParam(value = "priceStart", required = false, defaultValue = "") String priceStart,
+            @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd) {
         JSONObject jsonObject = new JSONObject();
-        SearchRequest request = new SearchRequest(type, "PC", keyword, sku, sortType, shop);
+        SearchRequest request = new SearchRequest(type, "PC", keyword, sku, sortType, shop, priceStart, priceEnd);
         List<SearchResult> resultList = new ArrayList<>();
         List<SearchMergedResult> result = new ArrayList<>();
         try {
@@ -104,8 +121,14 @@ public class CrawlerController {
                           @RequestParam(value = "sku", required = false, defaultValue = "") String sku) {
         DmpRequest dmpRequest = new DmpRequest(userName, password, sku);
         JSONObject jsonObject = new JSONObject();
-        DmpResult dmpResult = dmpService.crawlHttp(dmpRequest);
-        jsonObject.put("result", dmpResult);
+        DmpResult dmpResult = dmpService.crawlHttpNew(dmpRequest);
+        if (dmpRequest == null) {
+            jsonObject.put("code", -1);
+            jsonObject.put("message", "请稍后重试");
+        } else {
+            jsonObject.put("code", 0);
+            jsonObject.put("result", dmpResult);
+        }
         return jsonObject;
     }
 
@@ -113,12 +136,27 @@ public class CrawlerController {
     @ResponseBody
     public JSONObject loginDmp(@RequestParam(value = "userName", required = false, defaultValue = "") String userName,
                                @RequestParam(value = "password", required = false, defaultValue = "") String password) {
-        DmpRequest dmpRequest = new DmpRequest(userName, password, "");
         JSONObject jsonObject = new JSONObject();
-        if (dmpService.loginHttp(dmpRequest)) {
-            jsonObject.put("result", 0);
+        if (cookieTool.hasSellerCookie(userName, password)) {
+            jsonObject.put("code", 0);
+            jsonObject.put("message", "");
         } else {
-            jsonObject.put("result", -1);
+            LoginResult loginResult = loginService.loginSellerBackend(userName, password);
+            jsonObject.put("code", loginResult.getStatus());
+            jsonObject.put("message", loginResult.getMessage());
+        }
+        return jsonObject;
+    }
+
+    @RequestMapping("/testProxy")
+    @ResponseBody
+    public JSONObject testProxy(@RequestParam(value = "ip", required = false, defaultValue = "") String ip,
+                                @RequestParam(value = "port", required = false, defaultValue = "") String port) {
+        JSONObject jsonObject = new JSONObject();
+        ChromeDriver chromeDriver = webDriverBuilder.getWebDriverWithProxy(ip, port);
+        if (chromeDriver != null) {
+            chromeDriver.get("http://httpbin.org/ip");
+            jsonObject.put("result", chromeDriver.getPageSource());
         }
         return jsonObject;
     }
