@@ -190,18 +190,33 @@ public class LoginService {
             webDriver.findElementById("loginname").sendKeys(userName);
             webDriverActionDelegate.sleep(1000);
             webDriver.findElementById("nloginpwd").sendKeys(password);
-            webDriverActionDelegate.sleep(1000);
+            webDriverActionDelegate.sleep(500);
             webDriver.findElementById("paipaiLoginSubmit").click();
+            webDriverActionDelegate.sleep(1000);
             if (webDriverActionDelegate.waitElementDisplayed("//img[@id='JD_Verification1']", webDriver, 5)) {
                 LOGGER.error("================ verifyCode needed !====================");
                 for (int i = 0; i < 3; i++) {
-                    webDriver.findElementById("JD_Verification1").click();
                     verifyCode("//img[@id='JD_Verification1']", webDriver, frameLocation);
                     if (i == 2 && webDriverActionDelegate.isElementDisplayed("//label[@id='authcode_error']", webDriver)) {
                         LOGGER.error("================ 打码3次失败 !====================");
                         loginResult.setMessage("打码3次失败");
                         loginResult.setStatus(-1);
                         return loginResult;
+                    }
+                    if (webDriverActionDelegate.waitElementDisplayed("//div[@class='wb-per']", webDriver, 3)) {
+                        loginResult.setStatus(-2);
+                        String message = webDriver.findElementByXPath("//div[@class='wb-per']").getText();
+                        message = message.replace(">", "");
+                        loginResult.setMessage(message);
+                        return loginResult;
+                    }
+                    if (webDriverActionDelegate.waitElementDisplayed("//div[@id='tab_phoneV']", webDriver, 3)) {
+                        cookieTool.saveSellerCookie(userName, password, webDriver);
+                        LOGGER.error("================ 登录商家后台成功 ====================");
+                        loginResult.setStatus(0);
+                        loginResult.setMessage("");
+                        return loginResult;
+
                     }
                     if (webDriverActionDelegate.waitElementDisplayed("//img[@id='JD_Verification1']", webDriver, 3)) {
                         continue;
@@ -235,7 +250,7 @@ public class LoginService {
                 LOGGER.error("================ 登录失败 ====================");
                 webDriverActionDelegate.takeFullScreenShot(webDriver);
                 try {
-                    FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "utf-8");
+                    FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "gbk");
                 } catch (IOException e) {
                     LOGGER.error("", e);
                 }

@@ -727,9 +727,10 @@ public class HttpCrawlerService implements CrawlerService {
             if (shop == null || shop.isEmpty()) {
                 shop = doc.select("div[class=shopName]").text();
             }
+            searchResult.setShop(shop);
             String brand = doc.select("ul[id=parameter-brand]>li>a").text();
             searchResult.setBrand(brand);
-            searchResult.setShop(shop);
+            searchResult.setImg(doc.select("img[id=spec-img]").attr("data-origin"));
             Elements elements = doc.select("#crumb-wrap>div[class=w]>div[class=crumb fl clearfix] a");
             if (elements.size() > 2) {
                 String firstCategory = elements.get(0).text();

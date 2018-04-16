@@ -62,13 +62,9 @@ public class CaptchaService {
             String pd_key = "jXBzWGlQmBXlC9vLL2/mwtudTowoYQIW";
             // 对象生成之后，在任何操作之前，需要先调用初始化接口
             api.Init(app_id, app_key, pd_id, pd_key);
-            // 查询余额
-            Util.HttpResp resp = api.QueryBalc();
-            System.out.printf("query balc!ret: %d cust: %f err: %s reqid: %s pred: %s\n", resp.ret_code, resp.cust_val, resp.err_msg, resp.req_id, resp.pred_resl);
-            //
             String pred_type = "30400";
             // 通过文件进行验证码识别
-            resp = api.PredictFromBase64(pred_type, base64Str);
+            Util.HttpResp resp = api.PredictFromBase64(pred_type, base64Str);
             LOGGER.error("code result : " + resp.rsp_data);
             JSONObject jsonObject = JSONObject.parseObject(resp.rsp_data);
 
