@@ -3,14 +3,12 @@ package com.jingdianbao.service.impl;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.jingdianbao.entity.SearchCursor;
-import com.jingdianbao.entity.SearchRequest;
-import com.jingdianbao.entity.SearchResult;
+import com.jingdianbao.entity.*;
 import com.jingdianbao.http.HttpClientFactory;
 import com.jingdianbao.service.CrawlerService;
 import com.jingdianbao.util.CookieTool;
+import com.jingdianbao.util.HttpUtil;
 import com.jingdianbao.webdriver.WebDriverBuilder;
-import com.jingdianbao.entity.Category;
 import com.jingdianbao.webdriver.WebDriverActionDelegate;
 import org.apache.commons.io.FileUtils;
 import org.apache.http.NameValuePair;
@@ -732,20 +730,128 @@ public class HttpCrawlerService implements CrawlerService {
             searchResult.setBrand(brand);
             searchResult.setImg(doc.select("img[id=spec-img]").attr("data-origin"));
             Elements elements = doc.select("#crumb-wrap>div[class=w]>div[class=crumb fl clearfix] a");
+            String catId = "";
+            Pattern p = Pattern.compile("cat=([\\d+,]+\\d+)");
             if (elements.size() > 2) {
                 String firstCategory = elements.get(0).text();
                 String secondCategory = elements.get(1).text();
                 String thirdCategory = elements.get(2).text();
+                String catUrl = elements.get(2).attr("href");
+                Matcher matcher = p.matcher(catUrl);
+                if (matcher.find()) {
+                    catId = matcher.group(1);
+                    LOGGER.info(catId);
+                }
                 Category category = new Category();
                 category.setLevel1(firstCategory);
                 category.setLevel2(secondCategory);
                 category.setLevel3(thirdCategory);
                 searchResult.setCategory(category);
             }
+            String source = doc.toString();
+            String venderId = "";
+            p = Pattern.compile("venderId:(\\d+),");
+            Matcher matcher = p.matcher(source);
+            if (matcher.find()) {
+                venderId = matcher.group(1);
+                LOGGER.info(venderId);
+            }
+            String shopId = "";
+            p = Pattern.compile("shopId:'(\\d+)',");
+            matcher = p.matcher(source);
+            if (matcher.find()) {
+                shopId = matcher.group(1);
+                LOGGER.info(shopId);
+            }
+            crawlSkuPromotion(searchResult, catId, venderId, shopId);
         } catch (IOException e) {
             LOGGER.error("", e);
         }
     }
+
+    public void crawlSkuPromotion(final SearchResult searchResult, String catId, String venderId, String shopId) {
+        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+        HttpGet httpGet = new HttpGet("https://p.3.cn/prices/mgets?callback=jQuery2244087&type=1&area=15_1213_3411_52667&pdtk=&pduid=15102037407391075657148&pdpin=meixi7891&pin=meixi7891&pdbp=0&skuIds=J_" + searchResult.getSku() + "&ext=11000000&source=item-pc");
+        httpGet.addHeader("Referer", "https://item.jd.com/5618804.html");
+        httpGet.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
+        httpGet.setConfig(requestConfig);
+        try {
+            CloseableHttpResponse response = httpClient.execute(httpGet);
+            Pattern p = Pattern.compile("\\(.*\\);");
+            String result = HttpUtil.readResponse(response);
+            Matcher matcher = p.matcher(result);
+            if (matcher.find()) {
+                String json = matcher.group().replace("(", "").replace(");", "");
+                JSONArray jsonArray = JSONArray.parseArray(json);
+                searchResult.setPrice(jsonArray.getJSONObject(0).getString("p"));
+            }
+            httpGet = new HttpGet("https://cd.jd.com/promotion/v2?callback=jQuery3149880&skuId=" + searchResult.getSku() + "&area=15_1213_3411_52667&shopId=" + shopId + "&venderId=" + venderId + "&cat=" + URLEncoder.encode(catId, "utf-8") + "&isCanUseDQ=isCanUseDQ-1&isCanUseJQ=isCanUseJQ-1&platform=0&orgType=2&jdPrice=" + searchResult.getPrice() + "&_=" + System.currentTimeMillis());
+            CookieStore cookieStore = new BasicCookieStore();
+            cookieTool.loadCookie("search", "PC", cookieStore);
+            httpGet.addHeader("Referer", "https://item.jd.com/5618804.html");
+            httpGet.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
+            httpGet.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
+            response = httpClient.execute(httpGet);
+            result = HttpUtil.readResponse(response, "gbk");
+            p = Pattern.compile("\\(.*\\)");
+            matcher = p.matcher(result);
+            if (matcher.find()) {
+                String json = matcher.group().replace("(", "").replace(")", "");
+                JSONObject jsonObject = JSONObject.parseObject(json);
+                //广告语
+                JSONArray ads = jsonObject.getJSONArray("ads");
+                for (int i = 0; i < ads.size(); i++) {
+                    String ad = ads.getJSONObject(i).getString("ad").replaceAll("(<.*/?>)", "");
+                    searchResult.getAdvert().add(ad);
+                }
+                //促销
+                JSONObject prom = jsonObject.getJSONObject("prom");
+                JSONArray tags = prom.getJSONArray("tags");
+                for (int i = 0; i < tags.size(); i++) {
+                    String name = tags.getJSONObject(i).getString("name");
+                    //赠品
+                    if ("赠品".equals(name)) {
+                        JSONArray gifts = tags.getJSONObject(i).getJSONArray("gifts");
+                        for (int j = 0; j < gifts.size(); j++) {
+                            Gift gift = new Gift();
+                            gift.setName(gifts.getJSONObject(j).getString("nm"));
+                            gift.setNumber(gifts.getJSONObject(j).getIntValue("num"));
+                            searchResult.getGifts().add(gift);
+                        }
+                    } else {
+                        Promotion promotion = new Promotion();
+                        promotion.setName(name);
+                        promotion.setContent(tags.getJSONObject(i).getString("content"));
+                        searchResult.getPromotions().add(promotion);
+                    }
+                }
+                JSONArray pickOneTag = prom.getJSONArray("pickOneTag");
+                for (int i = 0; i < pickOneTag.size(); i++) {
+                    Promotion promotion = new Promotion();
+                    promotion.setName(pickOneTag.getJSONObject(i).getString("name"));
+                    promotion.setContent(pickOneTag.getJSONObject(i).getString("content"));
+                    searchResult.getPromotions().add(promotion);
+                }
+                //满额返券
+                JSONObject quan = jsonObject.getJSONObject("quan");
+                if (quan != null && !quan.isEmpty()) {
+                    Promotion promotion = new Promotion();
+                    promotion.setName("满额返券");
+                    promotion.setContent(quan.getString("title"));
+                    searchResult.getPromotions().add(promotion);
+                }
+
+                //优惠券
+                JSONArray skuCoupon = jsonObject.getJSONArray("skuCoupon");
+                for (int i = 0; i < skuCoupon.size(); i++) {
+                    searchResult.getCoupons().add("满" + skuCoupon.getJSONObject(i).getString("quota") + "减" + skuCoupon.getJSONObject(i).getString("trueDiscount"));
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("", e);
+        }
+    }
+
 
     private void crawlComment(final SearchResult searchResult) {
         crawlCommentH5(searchResult);
@@ -816,6 +922,10 @@ public class HttpCrawlerService implements CrawlerService {
             JSONObject jsonObject = JSONObject.parseObject(sb.toString());
             int commentCount = jsonObject.getJSONObject("wareDetailComment").getIntValue("allCnt");
             searchResult.setComment(commentCount);
+            searchResult.setGoodComment(jsonObject.getJSONObject("wareDetailComment").getIntValue("goodCnt"));
+            searchResult.setNormalComment(jsonObject.getJSONObject("wareDetailComment").getIntValue("normalCnt"));
+            searchResult.setBadComment(jsonObject.getJSONObject("wareDetailComment").getIntValue("badCnt"));
+            searchResult.setPicComment(jsonObject.getJSONObject("wareDetailComment").getIntValue("pictureCnt"));
         } catch (Exception e) {
             LOGGER.error("", e);
         } finally {

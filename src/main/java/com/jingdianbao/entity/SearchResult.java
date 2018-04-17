@@ -1,5 +1,8 @@
 package com.jingdianbao.entity;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class SearchResult {
 
     private String title = "";
@@ -18,13 +21,39 @@ public class SearchResult {
 
     private int rank;
 
+    private int goodComment;
+
+    private int normalComment;
+
+    private int badComment;
+
+    private int picComment;
+
     private int comment;
 
     private int discard;
 
+    private String price;
+
+    private List<String> coupons = new ArrayList<>();
+
+    private List<Gift> gifts = new ArrayList<>();
+
+    private List<Promotion> promotions = new ArrayList<>();
+
+    private List<String> advert = new ArrayList<>();
+
     private String url = "";
 
     private String img = "";
+
+    public List<String> getAdvert() {
+        return advert;
+    }
+
+    public void setAdvert(List<String> advert) {
+        this.advert = advert;
+    }
 
     private Category category = new Category();
 
@@ -141,5 +170,69 @@ public class SearchResult {
 
     public void setBrand(String brand) {
         this.brand = brand;
+    }
+
+    public int getGoodComment() {
+        return goodComment;
+    }
+
+    public void setGoodComment(int goodComment) {
+        this.goodComment = goodComment;
+    }
+
+    public int getNormalComment() {
+        return normalComment;
+    }
+
+    public void setNormalComment(int normalComment) {
+        this.normalComment = normalComment;
+    }
+
+    public int getBadComment() {
+        return badComment;
+    }
+
+    public void setBadComment(int badComment) {
+        this.badComment = badComment;
+    }
+
+    public int getPicComment() {
+        return picComment;
+    }
+
+    public void setPicComment(int picComment) {
+        this.picComment = picComment;
+    }
+
+    public List<String> getCoupons() {
+        return coupons;
+    }
+
+    public void setCoupons(List<String> coupons) {
+        this.coupons = coupons;
+    }
+
+    public String getPrice() {
+        return price;
+    }
+
+    public void setPrice(String price) {
+        this.price = price;
+    }
+
+    public List<Gift> getGifts() {
+        return gifts;
+    }
+
+    public void setGifts(List<Gift> gifts) {
+        this.gifts = gifts;
+    }
+
+    public List<Promotion> getPromotions() {
+        return promotions;
+    }
+
+    public void setPromotions(List<Promotion> promotions) {
+        this.promotions = promotions;
     }
 }

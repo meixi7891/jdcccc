@@ -21,8 +21,12 @@ public class HttpUtil {
 
 
     public static String readResponse(CloseableHttpResponse response) {
+        return readResponse(response, "utf-8");
+    }
+
+    public static String readResponse(CloseableHttpResponse response, String charSetName) {
         try {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), charSetName));
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
