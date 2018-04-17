@@ -840,11 +840,15 @@ public class HttpCrawlerService implements CrawlerService {
                     promotion.setContent(quan.getString("title"));
                     searchResult.getPromotions().add(promotion);
                 }
-
                 //优惠券
-                JSONArray skuCoupon = jsonObject.getJSONArray("skuCoupon");
-                for (int i = 0; i < skuCoupon.size(); i++) {
-                    searchResult.getCoupons().add("满" + skuCoupon.getJSONObject(i).getString("quota") + "减" + skuCoupon.getJSONObject(i).getString("trueDiscount"));
+                JSONArray skuCoupons = jsonObject.getJSONArray("skuCoupon");
+                for (int i = 0; i < skuCoupons.size(); i++) {
+                    JSONObject skuCoupon = skuCoupons.getJSONObject(i);
+                    if (skuCoupon.getIntValue("couponKind") == 3) {
+                        searchResult.getCoupons().add(skuCoupon.getString("allDesc"));
+                    } else if (skuCoupon.getIntValue("couponKind") == 2) {
+                        searchResult.getCoupons().add("满" + skuCoupon.getString("quota") + "减" + skuCoupon.getString("trueDiscount"));
+                    }
                 }
             }
         } catch (Exception e) {
