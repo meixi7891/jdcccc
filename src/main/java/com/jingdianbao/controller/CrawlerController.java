@@ -19,7 +19,9 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @RestController
@@ -90,24 +92,35 @@ public class CrawlerController {
         try {
             resultList = httpCrawlerService.search(request);
             for (SearchResult searchResult : resultList) {
-                result.add(new SearchMergedResult(searchResult));
+                result.add(new SearchMergedResult(searchResult, request.getSource()));
             }
             request.setSource("H5");
             resultList = httpCrawlerService.search(request);
+            Set<String> mergedSkuSet = new HashSet<>();
             for (SearchMergedResult searchMergedResult : result) {
                 for (SearchResult searchResult : resultList) {
                     if (searchMergedResult.getSku().equals(searchResult.getSku())) {
                         searchMergedResult.merge(searchResult);
-                        searchMergedResult.setPrice(httpCrawlerService.crawlSkuPrice(searchResult.getSku()));
-                        searchMergedResult.setAdverts(httpCrawlerService.crawlSkuAdverts(searchResult.getSku(), searchMergedResult.getPrice()));
-                        searchMergedResult.setPromotion(httpCrawlerService.crawlSkuPromotion(searchResult.getSku(), searchMergedResult.getPrice()));
-                        searchMergedResult.setCommentEntity(httpCrawlerService.crawlCommentH5(searchResult.getSku()));
+                        mergedSkuSet.add(searchResult.getSku());
                     }
                 }
+            }
+            for (SearchResult searchResult : resultList) {
+                if(!mergedSkuSet.contains(searchResult.getSku())){
+                    SearchMergedResult h5SearchMergedResult = new SearchMergedResult(searchResult, request.getSource());
+                    result.add(h5SearchMergedResult);
+                }
+            }
+            for(SearchMergedResult searchMergedResult : result){
+                searchMergedResult.setPrice(httpCrawlerService.crawlSkuPrice(searchMergedResult.getSku()));
+                searchMergedResult.setAdverts(httpCrawlerService.crawlSkuAdverts(searchMergedResult.getSku(), searchMergedResult.getPrice()));
+                searchMergedResult.setPromotion(httpCrawlerService.crawlSkuPromotion(searchMergedResult.getSku(), searchMergedResult.getPrice()));
+                searchMergedResult.setCommentEntity(httpCrawlerService.crawlCommentH5(searchMergedResult.getSku()));
             }
             jsonObject.put("code", 0);
             jsonObject.put("message", "抓取成功");
         } catch (Exception e) {
+            LOGGER.error("", e);
             jsonObject.put("code", -1);
             jsonObject.put("message", "抓取失败");
         }
@@ -120,12 +133,12 @@ public class CrawlerController {
     public JSONObject Comment(@RequestParam(value = "sku", required = false, defaultValue = "") String sku) {
         JSONObject jsonObject = new JSONObject();
         try {
-
             CommentResult commentResult = httpCrawlerService.crawlCommentH5(sku);
             jsonObject.put("code", 0);
             jsonObject.put("result", commentResult);
             jsonObject.put("message", "抓取成功");
         } catch (Exception e) {
+            LOGGER.error("", e);
             jsonObject.put("code", -1);
             jsonObject.put("message", "抓取失败");
         }
@@ -146,10 +159,17 @@ public class CrawlerController {
             result.put("adverts", adverts);
             result.put("promotion", promotion);
             result.put("comment", commentResult);
+            SearchResult searchResult = new SearchResult();
+            searchResult.setSku(sku);
+            httpCrawlerService.crawlSkuDetail(searchResult);
+            if (searchResult.getCategory() != null) {
+                result.put("category", searchResult.getCategory());
+            }
             jsonObject.put("code", 0);
             jsonObject.put("message", "抓取成功");
             jsonObject.put("result", result);
         } catch (Exception e) {
+            LOGGER.error("", e);
             jsonObject.put("code", -1);
             jsonObject.put("message", "抓取失败");
         }

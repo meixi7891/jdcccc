@@ -35,7 +35,7 @@ public class SearchMergedResult {
 
     private List<String> adverts;
 
-    private CommentResult commentEntity;
+    private CommentResult commentEntity = new CommentResult();
 
     private String url = "";
 
@@ -43,17 +43,21 @@ public class SearchMergedResult {
 
     private Category category = new Category();
 
-    public SearchMergedResult(SearchResult searchResult) {
+    public SearchMergedResult(SearchResult searchResult,String source) {
         this.title = searchResult.getTitle();
         this.shop = searchResult.getShop();
         this.type = searchResult.getType();
         this.keyword = searchResult.getKeyword();
         this.sku = searchResult.getSku();
-
-        this.pcPage = searchResult.getPage();
-        this.pcPos = searchResult.getPos();
-        this.pcRank = searchResult.getRank();
-
+        if("PC".equals(source)){
+            this.pcPage = searchResult.getPage();
+            this.pcPos = searchResult.getPos();
+            this.pcRank = searchResult.getRank();
+        }else {
+            this.h5Page = searchResult.getPage();
+            this.h5Pos = searchResult.getPos();
+            this.h5Rank = searchResult.getRank();
+        }
         this.commentEntity.setComment(searchResult.getComment());
         this.commentEntity.setDiscard(searchResult.getDiscard());
 

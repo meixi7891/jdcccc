@@ -914,11 +914,11 @@ public class HttpCrawlerService implements CrawlerService {
                     promotion.getPromotionItemList().add(promotionItem);
                 }
                 //满额返券
-                JSONObject quan = jsonObject.getJSONObject("quan");
+                JSONArray quan = jsonObject.getJSONArray("quan");
                 if (quan != null && !quan.isEmpty()) {
                     PromotionItem promotionItem = new PromotionItem();
                     promotionItem.setName("满额返券");
-                    promotionItem.setContent(quan.getString("title"));
+                    promotionItem.setContent(quan.getJSONObject(0).getString("title"));
                     promotion.getPromotionItemList().add(promotionItem);
                 }
                 //优惠券
