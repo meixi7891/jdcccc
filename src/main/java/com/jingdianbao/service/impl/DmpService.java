@@ -186,7 +186,12 @@ public class DmpService {
             postData.put("skus", skus);
             httpPost.setEntity(new StringEntity(postData.toJSONString(), ContentType.APPLICATION_JSON));
             CloseableHttpResponse response = httpClient.execute(httpPost);
-            JSONObject jsonObject = HttpUtil.readJSONResponse(response);
+            String result = HttpUtil.readResponse(response);
+            JSONObject jsonObject = JSONObject.parseObject(result);
+            if(jsonObject==null){
+                LOGGER.error(result);
+                return dmpResult;
+            }
             if (jsonObject.getIntValue("code") == 1) {
                 dmpResult.setCoverCount(jsonObject.getJSONObject("data").getIntValue("totalUV"));
             }
