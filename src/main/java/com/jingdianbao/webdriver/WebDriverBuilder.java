@@ -1,11 +1,13 @@
 package com.jingdianbao.webdriver;
 
+import com.jingdianbao.service.impl.ProxyService;
 import org.openqa.selenium.Proxy;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.DesiredCapabilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +24,8 @@ public class WebDriverBuilder {
     private int maxdriversize;
 
     private AtomicInteger diverCount = new AtomicInteger(0);
+    @Autowired
+    private ProxyService proxyService;
 
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WebDriverBuilder.class);
@@ -31,7 +35,6 @@ public class WebDriverBuilder {
             return null;
         }
         try {
-
             DesiredCapabilities dcaps = new DesiredCapabilities();
             ChromeOptions options = new ChromeOptions();
             options.addArguments("start-maximized");

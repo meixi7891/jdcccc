@@ -1,24 +1,37 @@
 package com.jingdianbao.entity;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class Promotion {
 
-    private String name;
+    private List<Gift> giftList = new ArrayList<>();
 
-    private String content;
+    private List<String> coupons = new ArrayList<>();
 
-    public String getName() {
-        return name;
+    private List<PromotionItem> promotionItemList = new ArrayList<>();
+
+    public List<Gift> getGiftList() {
+        return giftList;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public void setGiftList(List<Gift> giftList) {
+        this.giftList = giftList;
     }
 
-    public String getContent() {
-        return content;
+    public List<String> getCoupons() {
+        return coupons;
     }
 
-    public void setContent(String content) {
-        this.content = content;
+    public void setCoupons(List<String> coupons) {
+        this.coupons = coupons;
+    }
+
+    public List<PromotionItem> getPromotionItemList() {
+        return promotionItemList;
+    }
+
+    public void setPromotionItemList(List<PromotionItem> promotionItemList) {
+        this.promotionItemList = promotionItemList;
     }
 }

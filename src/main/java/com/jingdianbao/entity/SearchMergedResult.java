@@ -27,27 +27,15 @@ public class SearchMergedResult {
 
     private int h5Rank;
 
-    private int comment;
-
-    private int goodComment;
-
-    private int normalComment;
-
-    private int badComment;
-
-    private int picComment;
-
     private int discard;
 
-    private List<String> coupons = new ArrayList<>();
-
-    private List<Gift> gifts = new ArrayList<>();
-
-    private List<Promotion> promotions = new ArrayList<>();
-
-    private List<String> advert  = new ArrayList<>();
+    private Promotion promotion;
 
     private String price;
+
+    private List<String> adverts;
+
+    private CommentResult commentEntity;
 
     private String url = "";
 
@@ -66,18 +54,9 @@ public class SearchMergedResult {
         this.pcPos = searchResult.getPos();
         this.pcRank = searchResult.getRank();
 
-        this.comment = searchResult.getComment();
+        this.commentEntity.setComment(searchResult.getComment());
+        this.commentEntity.setDiscard(searchResult.getDiscard());
 
-        this.goodComment = searchResult.getGoodComment();
-        this.normalComment = searchResult.getNormalComment();
-        this.badComment = searchResult.getBadComment();
-        this.picComment = searchResult.getPicComment();
-
-        this.coupons = searchResult.getCoupons();
-        this.advert = searchResult.getAdvert();
-        this.price = searchResult.getPrice();
-        this.gifts = searchResult.getGifts();
-        this.promotions = searchResult.getPromotions();
         this.discard = searchResult.getDiscard();
         this.url = searchResult.getUrl();
         this.img = searchResult.getImg();
@@ -178,12 +157,12 @@ public class SearchMergedResult {
         this.h5Rank = h5Rank;
     }
 
-    public int getComment() {
-        return comment;
+    public CommentResult getCommentEntity() {
+        return commentEntity;
     }
 
-    public void setComment(int comment) {
-        this.comment = comment;
+    public void setCommentEntity(CommentResult commentEntity) {
+        this.commentEntity = commentEntity;
     }
 
     public int getDiscard() {
@@ -218,52 +197,12 @@ public class SearchMergedResult {
         this.category = category;
     }
 
-    public int getGoodComment() {
-        return goodComment;
+    public Promotion getPromotion() {
+        return promotion;
     }
 
-    public void setGoodComment(int goodComment) {
-        this.goodComment = goodComment;
-    }
-
-    public int getNormalComment() {
-        return normalComment;
-    }
-
-    public void setNormalComment(int normalComment) {
-        this.normalComment = normalComment;
-    }
-
-    public int getBadComment() {
-        return badComment;
-    }
-
-    public void setBadComment(int badComment) {
-        this.badComment = badComment;
-    }
-
-    public int getPicComment() {
-        return picComment;
-    }
-
-    public void setPicComment(int picComment) {
-        this.picComment = picComment;
-    }
-
-    public List<String> getCoupons() {
-        return coupons;
-    }
-
-    public void setCoupons(List<String> coupons) {
-        this.coupons = coupons;
-    }
-
-    public List<String> getAdvert() {
-        return advert;
-    }
-
-    public void setAdvert(List<String> advert) {
-        this.advert = advert;
+    public void setPromotion(Promotion promotion) {
+        this.promotion = promotion;
     }
 
     public String getPrice() {
@@ -274,19 +213,11 @@ public class SearchMergedResult {
         this.price = price;
     }
 
-    public List<Gift> getGifts() {
-        return gifts;
+    public List<String> getAdverts() {
+        return adverts;
     }
 
-    public void setGifts(List<Gift> gifts) {
-        this.gifts = gifts;
-    }
-
-    public List<Promotion> getPromotions() {
-        return promotions;
-    }
-
-    public void setPromotions(List<Promotion> promotions) {
-        this.promotions = promotions;
+    public void setAdverts(List<String> adverts) {
+        this.adverts = adverts;
     }
 }

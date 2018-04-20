@@ -139,7 +139,19 @@ public class CookieTool {
         } else {
             return "";
         }
+    }
 
+    public String getCookieStr(Set<Cookie> cookieSet) {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (Cookie cookie : cookieSet) {
+            LOGGER.error("cookie: name : " + cookie.getName() + "  value :  " + cookie.getValue());
+            stringBuilder.append(cookie.getName()).append("=").append(cookie.getValue()).append(";");
+        }
+        if (stringBuilder.length() > 0) {
+            return stringBuilder.substring(0, stringBuilder.length() - 1);
+        } else {
+            return "";
+        }
     }
 
     private Cookie buildCookie(String str) {
@@ -155,7 +167,8 @@ public class CookieTool {
                 if (ss[i].contains("=")) {
                     String[] sss = ss[i].split("=");
                     if (sss[0].trim().equals("expires")) {
-                        expiry = new SimpleDateFormat("EEE, dd MMM yyyy hh:mm:ss z").parse(sss[1].trim());
+//                        expiry = new SimpleDateFormat("EEE, dd MMM yyyy hh:mm:ss z").parse(sss[1].trim());
+                        expiry = new Date(System.currentTimeMillis() + 86400000L);
                     } else if (sss[0].trim().equals("path")) {
                         path = sss[1].trim();
                     } else if (sss[0].trim().equals("domain")) {

@@ -30,7 +30,7 @@ public class HttpUtil {
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = reader.readLine()) != null) {
-                sb.append(line);
+                sb.append(line).append(System.getProperty("line.separator"));
             }
             reader.close();
             String result = sb.toString();

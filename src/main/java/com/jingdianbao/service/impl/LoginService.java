@@ -18,6 +18,7 @@ import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.openqa.selenium.Point;
+import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.slf4j.Logger;
@@ -66,7 +67,7 @@ public class LoginService {
                 CloseableHttpResponse response = httpClient.execute(httpPost);
                 int code = response.getStatusLine().getStatusCode();
                 String result = HttpUtil.readResponse(response);
-                if (result == null || result.isEmpty()) {
+                if (code != 200 || result == null || result.isEmpty()) {
                     return false;
                 } else {
                     return true;
@@ -94,7 +95,7 @@ public class LoginService {
             cookieTool.loadCookie(userName, password, webDriver);
             webDriver.get("https://jzt.jd.com/dmp/newtag/list");
             if (webDriverActionDelegate.waitElementDisplayed("//i[@class='icon-user']", webDriver, 5)) {
-                webDriver.quit();
+                webDriverBuilder.returnDriver(webDriver);
                 return true;
             }
             Point frameLocation = new Point(0, 0);
@@ -104,11 +105,12 @@ public class LoginService {
                 frameLocation = frame.getLocation();
                 webDriver.switchTo().frame(0);
                 webDriver.findElementById("loginname").sendKeys(userName);
-                webDriverActionDelegate.sleep(1000);
+                webDriverActionDelegate.sleep(500);
                 webDriver.findElementById("nloginpwd").sendKeys(password);
-                webDriverActionDelegate.sleep(1000);
+                webDriverActionDelegate.sleep(500);
                 webDriver.findElementById("paipaiLoginSubmit").click();
-                if (webDriverActionDelegate.waitElementDisplayed("//img[@id='JD_Verification1']", webDriver, 10)) {
+                webDriverActionDelegate.sleep(2000);
+                if (webDriverActionDelegate.waitElementDisplayed("//img[@id='JD_Verification1']", webDriver, 5)) {
                     LOGGER.error("================ verifyCode needed !====================");
                     for (int i = 0; i < 3; i++) {
                         verifyCode("//img[@id='JD_Verification1']", webDriver, frameLocation);
@@ -158,6 +160,91 @@ public class LoginService {
         } finally {
             if (webDriver != null) {
                 webDriverBuilder.returnDriver(webDriver);
+            }
+        }
+        return false;
+    }
+
+    public boolean doLoginDmp(String userName, String password) {
+        ChromeDriver webDriver = null;
+        LOGGER.error("================ start login by web driver !====================");
+        webDriver = webDriverBuilder.getWebDriver();
+        if (webDriver == null) {
+            LOGGER.error("================ start login by web driver failed !====================");
+            return false;
+        }
+        cookieTool.loadCookie(userName, password, webDriver);
+        webDriver.get("https://jzt.jd.com/dmp/newtag/list");
+        if (webDriverActionDelegate.waitElementDisplayed("//i[@class='icon-user']", webDriver, 5)) {
+            webDriverBuilder.returnDriver(webDriver);
+            return true;
+        }
+        boolean result = doLoginDmp(userName, password, webDriver);
+        webDriverBuilder.returnDriver(webDriver);
+        return result;
+    }
+
+    public boolean doLoginDmp(String userName, String password, final ChromeDriver webDriver) {
+        try {
+            webDriver.get("https://jzt.jd.com/dmp/newtag/list");
+            Point frameLocation = new Point(0, 0);
+            webDriverActionDelegate.sleep(1000);
+            if (webDriverActionDelegate.isElementDisplayed("//iframe", webDriver)) {
+                WebElement frame = webDriver.findElementByXPath("//iframe");
+                frameLocation = frame.getLocation();
+                webDriver.switchTo().frame(0);
+                webDriver.findElementById("loginname").sendKeys(userName);
+                webDriverActionDelegate.sleep(500);
+                webDriver.findElementById("nloginpwd").sendKeys(password);
+                webDriverActionDelegate.sleep(500);
+                webDriver.findElementById("paipaiLoginSubmit").click();
+                webDriverActionDelegate.sleep(1000);
+                if (webDriverActionDelegate.waitElementDisplayed("//img[@id='JD_Verification1']", webDriver, 10)) {
+                    LOGGER.error("================ verifyCode needed !====================");
+                    for (int i = 0; i < 3; i++) {
+                        verifyCode("//img[@id='JD_Verification1']", webDriver, frameLocation);
+                        if (i == 2 && webDriverActionDelegate.isElementDisplayed("//label[@id='authcode_error']", webDriver)) {
+                            LOGGER.error("================ 打码3次失败 !====================");
+                            return false;
+                        }
+                        if (webDriverActionDelegate.isElementDisplayed("//label[@id='authcode_error']", webDriver)) {
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                if (webDriverActionDelegate.isElementDisplayed("//label[@id='loginpwd_error']", webDriver)) {
+                    LOGGER.error("================ 密码错误 ====================");
+                    return false;
+                }
+            }
+            if (!webDriverActionDelegate.waitElementDisplayed("//i[@class='icon-user']", webDriver, 5)) {
+                LOGGER.error("================ 登录失败 ====================");
+                webDriverActionDelegate.takeFullScreenShot(webDriver);
+                try {
+                    FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "utf-8");
+                } catch (IOException e) {
+                    LOGGER.error("", e);
+                    return false;
+                }
+                return false;
+            } else {
+                LOGGER.error("================ 登录成功 ====================");
+                LOGGER.error("================ Cookie size : " + webDriver.manage().getCookies().size() + "====================");
+                webDriver.get("https://jzt.jd.com/kc/generalizeCondition/genCondIndex");
+                LOGGER.error("================ Cookie size : " + webDriver.manage().getCookies().size() + "====================");
+                cookieTool.saveCookie(userName, password, webDriver);
+                return true;
+            }
+        } catch (Exception e) {
+            LOGGER.error("", e);
+            webDriverActionDelegate.takeFullScreenShot(webDriver);
+            try {
+                FileUtils.write(new File(PREFIX_FILE_PATH + "/" + System.currentTimeMillis() + ".html"), webDriver.getPageSource(), "gbk");
+            } catch (IOException e1) {
+                LOGGER.error("", e);
+                return false;
             }
         }
         return false;

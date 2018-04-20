@@ -9,8 +9,10 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 @Component
 public class AccountService {
@@ -32,6 +34,17 @@ public class AccountService {
         }
         return null;
     }
+
+    public List<LoginAccount> allAccounts() {
+        List<LoginAccount> accountList = new ArrayList<>();
+        try {
+            FileUtils.readLines(new File(accountFilePath), "utf-8").stream().filter(s -> !s.trim().isEmpty()).map(s -> s.split("\\s+")).forEach(ss -> accountList.add(new LoginAccount(ss[0], ss[1])));
+        } catch (IOException e) {
+            LOGGER.error("", e);
+        }
+        return accountList;
+    }
+
 
     public int accountCount() {
         try {

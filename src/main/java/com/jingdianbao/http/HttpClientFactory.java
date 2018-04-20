@@ -82,6 +82,47 @@ public class HttpClientFactory {
         return HttpClients.custom().setSSLSocketFactory(getSSLConnectionSocketFactory()).setRetryHandler(httpRequestRetryHandler).build();
     }
 
+    public static CloseableHttpClient getHttpClient(String proxy) {
+
+        // 请求重试处理
+        HttpRequestRetryHandler httpRequestRetryHandler = new HttpRequestRetryHandler() {
+            public boolean retryRequest(IOException exception,
+                                        int executionCount, HttpContext context) {
+                if (executionCount >= 5) {// 如果已经重试了5次，就放弃
+                    return false;
+                }
+                if (exception instanceof NoHttpResponseException) {// 如果服务器丢掉了连接，那么就重试
+                    return true;
+                }
+                if (exception instanceof SSLHandshakeException) {// 不要重试SSL握手异常
+                    return false;
+                }
+                if (exception instanceof InterruptedIOException) {// 超时
+                    return false;
+                }
+                if (exception instanceof UnknownHostException) {// 目标服务器不可达
+                    return false;
+                }
+                if (exception instanceof ConnectTimeoutException) {// 连接被拒绝
+                    return false;
+                }
+                if (exception instanceof SSLException) {// SSL握手异常
+                    return false;
+                }
+                HttpClientContext clientContext = HttpClientContext
+                        .adapt(context);
+                HttpRequest request = clientContext.getRequest();
+                // 如果请求是幂等的，就再次尝试
+                if (!(request instanceof HttpEntityEnclosingRequest)) {
+                    return true;
+                }
+                return false;
+            }
+        };
+        String[] ss = proxy.split(":");
+        return HttpClients.custom().setProxy(new HttpHost(ss[0], Integer.parseInt(ss[1]))).setSSLSocketFactory(getSSLConnectionSocketFactory()).setRetryHandler(httpRequestRetryHandler).build();
+    }
+
     /**
      * @return
      * @description

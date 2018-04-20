@@ -2,14 +2,12 @@ package com.jingdianbao.service.impl;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.jingdianbao.entity.DmpRequest;
-import com.jingdianbao.entity.DmpResult;
-import com.jingdianbao.entity.LoginAccount;
-import com.jingdianbao.entity.SearchResult;
+import com.jingdianbao.entity.*;
 import com.jingdianbao.http.HttpClientFactory;
 
 import com.jingdianbao.util.CookieTool;
 import com.jingdianbao.util.HttpUtil;
+import com.jingdianbao.webdriver.WebDriverBuilder;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.CookieStore;
 import org.apache.http.client.config.RequestConfig;
@@ -24,6 +22,9 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
+import org.openqa.selenium.chrome.ChromeDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,9 +44,13 @@ public class DmpService {
     HttpCrawlerService httpCrawlerService;
     @Autowired
     private LoginTask loginTask;
-
+    @Autowired
+    private WebDriverBuilder webDriverBuilder;
     @Autowired
     private CookieTool cookieTool;
+
+    @Autowired
+    private ProxyService proxyService;
 
     public DmpResult crawlHttp(DmpRequest request) {
         DmpResult dmpResult = new DmpResult();
@@ -189,6 +194,132 @@ public class DmpService {
             LOGGER.error("", e);
         }
         return dmpResult;
+    }
+
+    public List<KuaicheResult> crawlKuaicheRank(String equipment, String area, String areaValue, String keyword, int position) {
+        List<KuaicheResult> results = new ArrayList<>();
+        CookieStore cookieStore = new BasicCookieStore();
+        LoginAccount loginAccount = accountService.loadRandomDmpAccount();
+        if (loginAccount != null) {
+            while (!loginService.testLogin(loginAccount.getUserName(), loginAccount.getPassword())) {
+                loginTask.addLoginTask(loginAccount);
+                if (accountService.accountCount() == loginTask.getTaskSize()) {
+                    return results;
+                }
+                loginAccount = accountService.loadRandomDmpAccount();
+            }
+        }
+        cookieTool.loadCookie(loginAccount.getUserName(), loginAccount.getPassword(), cookieStore);
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectTimeout(10000).setConnectionRequestTimeout(10000)
+                .setSocketTimeout(10000).build();
+        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient(proxyService.getProxy());
+        try {
+            HttpPost httpPost = new HttpPost("https://jzt.jd.com/kc/generalizeCondition/genCondSearch");
+            httpPost.addHeader("Referer", "https://jzt.jd.com/kc/generalizeCondition/genCondSearch");
+            httpPost.addHeader("Cookie", cookieTool.getCookieStr(cookieStore));
+            httpPost.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
+            httpPost.addHeader("Upgrade-Insecure-Requests", "1");
+            httpPost.addHeader("Content-Type", "application/x-www-form-urlencoded");
+            httpPost.setConfig(requestConfig);
+            List<NameValuePair> nvps = new ArrayList<>();
+            nvps.add(new BasicNameValuePair("equipment", equipment));
+            nvps.add(new BasicNameValuePair("area", area));
+            nvps.add(new BasicNameValuePair("areaValue", areaValue));
+            nvps.add(new BasicNameValuePair("keyValue", keyword));
+            httpPost.setEntity(new UrlEncodedFormEntity(nvps, "utf-8"));
+            CloseableHttpResponse response = httpClient.execute(httpPost);
+            String result = HttpUtil.readResponse(response, "utf-8");
+            Document doc = Jsoup.parse(result);
+            if ("1".equals(equipment)) {
+                switch (position) {
+                    //商品精选（京东左侧）
+                    case 1: {
+                        Elements elements = doc.select("div[id=promotion_goods] > ul > li");
+                        for (Element e : elements) {
+                            results.add(parseKuaicheResult(e));
+                        }
+                        return results;
+                    }
+                    //商品精选（京东底部）
+                    case 2: {
+                        Elements elements = doc.select("div[id=selection_goods] > ul > li");
+                        for (Element e : elements) {
+                            results.add(parseKuaicheResult(e));
+                        }
+                        return results;
+                    }
+                    //信息流原生
+                    case 3: {
+                        Elements elements = doc.select("div[id=infomation_native] > ul > li");
+                        for (Element e : elements) {
+                            results.add(parseKuaicheResult(e));
+                        }
+                        return results;
+                    }
+                    //>商家精选
+                    case 4: {
+                        Elements elements = doc.select("div[id=merchant_selection] > ul > li");
+                        for (Element e : elements) {
+                            results.add(parseKuaicheResult(e));
+                        }
+                        return results;
+                    }
+                    default:
+                        return results;
+                }
+            } else {
+                switch (position) {
+                    //APP搜索页
+                    case 1: {
+                        Elements elements = doc.select("div[id=app_goods] > ul > li");
+                        for (Element e : elements) {
+                            results.add(parseKuaicheResult(e));
+                        }
+                        return results;
+                    }
+                    //微信搜索页
+                    case 2: {
+                        Elements elements = doc.select("div[id=wei_goods] > ul > li");
+                        for (Element e : elements) {
+                            results.add(parseKuaicheResult(e));
+                        }
+                        return results;
+                    }
+                    //手Q搜索页
+                    case 3: {
+                        Elements elements = doc.select("div[id=q_goods] > ul > li");
+                        for (Element e : elements) {
+                            results.add(parseKuaicheResult(e));
+                        }
+                        return results;
+                    }
+                    //京东M端搜索页
+                    case 4: {
+                        Elements elements = doc.select("div[id=m_goods] > ul > li");
+                        for (Element e : elements) {
+                            results.add(parseKuaicheResult(e));
+                        }
+                        return results;
+                    }
+                    default:
+                        return results;
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("", e);
+        }
+        return results;
+    }
+
+    private KuaicheResult parseKuaicheResult(Element e) {
+        KuaicheResult kuaicheResult = new KuaicheResult();
+        kuaicheResult.setImg(e.getElementsByTag("img").attr("src"));
+        kuaicheResult.setTitle(e.getElementsByAttributeValue("class", "price_tit").text());
+        kuaicheResult.setRank(Integer.parseInt(e.getElementsByTag("em").text()));
+        kuaicheResult.setPrice(e.getElementsByAttributeValue("class", "red").text());
+        kuaicheResult.setComment(Integer.parseInt(e.getElementsByAttributeValue("class", "blue").text()));
+        return kuaicheResult;
     }
 
 

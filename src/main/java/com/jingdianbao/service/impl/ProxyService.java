@@ -17,16 +17,16 @@ import java.io.InputStreamReader;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-//@Component
+@Component
 public class ProxyService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HttpCrawlerService.class);
 
     private CopyOnWriteArrayList<String> proxyPool = new CopyOnWriteArrayList();
 
-    private String url = "http://tiqu.jiguangip.com/getip?num=10&type=2&pro=0&city=0&yys=0&port=1&pack=122&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions=";
+    private String url = "http://webapi.http.zhimacangku.com/getip?num=1&type=2&pro=&city=0&yys=0&port=1&pack=18569&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=1&regions=";
 
-    public String getProxy() {
+    public String getRandomProxy() {
         Random random = new Random();
         int index = random.nextInt(10);
         if (index < proxyPool.size()) {
@@ -36,7 +36,37 @@ public class ProxyService {
         }
     }
 
-//    @PostConstruct
+    public String getProxy() {
+        try {
+            CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+            HttpGet httpGet = new HttpGet(url);
+            CloseableHttpResponse response = httpClient.execute(httpGet);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "utf-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            reader.close();
+            String result = sb.toString();
+            JSONObject jsonObject = JSONObject.parseObject(result);
+            if (jsonObject.getIntValue("code") == 0) {
+                JSONArray array = jsonObject.getJSONArray("data");
+                for (int i = 0; i < array.size(); i++) {
+                    JSONObject object = array.getJSONObject(i);
+                    String ip = object.getString("ip");
+                    String port = object.getString("port");
+                    return ip + ":" + port;
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("load proxy error", e);
+        }
+        return null;
+    }
+
+
+    //    @PostConstruct
 //    @Scheduled(cron = "0 0/30 * * * ?")
     private void loadProxy() {
         try {

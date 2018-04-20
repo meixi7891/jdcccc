@@ -33,8 +33,11 @@ public class LoginTask {
                 } else {
                     try {
                         LoginAccount loginAccount = loginAccountList.get(0);
-                        loginService.loginDmp(loginAccount.getUserName(), loginAccount.getPassword());
+                        boolean result = loginService.doLoginDmp(loginAccount.getUserName(), loginAccount.getPassword());
                         loginAccountList.remove(0);
+                        if (!result) {
+                            loginAccountList.add(loginAccount);
+                        }
                     } catch (Throwable e) {
                         LOGGER.error("", e);
                     }
@@ -49,7 +52,7 @@ public class LoginTask {
         }
     }
 
-    public int getTaskSize(){
+    public int getTaskSize() {
         return loginAccountList.size();
     }
 }

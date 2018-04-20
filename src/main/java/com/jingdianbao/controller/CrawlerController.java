@@ -2,6 +2,7 @@ package com.jingdianbao.controller;
 
 import com.alibaba.fastjson.JSONObject;
 import com.jingdianbao.entity.*;
+import com.jingdianbao.service.impl.AccountService;
 import com.jingdianbao.service.impl.DmpService;
 import com.jingdianbao.service.impl.HttpCrawlerService;
 
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/crawler")
@@ -38,6 +40,9 @@ public class CrawlerController {
 
     @Autowired
     private CookieTool cookieTool;
+
+    @Autowired
+    private AccountService accountService;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CrawlerController.class);
 
@@ -93,6 +98,10 @@ public class CrawlerController {
                 for (SearchResult searchResult : resultList) {
                     if (searchMergedResult.getSku().equals(searchResult.getSku())) {
                         searchMergedResult.merge(searchResult);
+                        searchMergedResult.setPrice(httpCrawlerService.crawlSkuPrice(searchResult.getSku()));
+                        searchMergedResult.setAdverts(httpCrawlerService.crawlSkuAdverts(searchResult.getSku(), searchMergedResult.getPrice()));
+                        searchMergedResult.setPromotion(httpCrawlerService.crawlSkuPromotion(searchResult.getSku(), searchMergedResult.getPrice()));
+                        searchMergedResult.setCommentEntity(httpCrawlerService.crawlCommentH5(searchResult.getSku()));
                     }
                 }
             }
@@ -103,6 +112,47 @@ public class CrawlerController {
             jsonObject.put("message", "抓取失败");
         }
         jsonObject.put("result", result);
+        return jsonObject;
+    }
+
+    @RequestMapping("/searchComment")
+    @ResponseBody
+    public JSONObject Comment(@RequestParam(value = "sku", required = false, defaultValue = "") String sku) {
+        JSONObject jsonObject = new JSONObject();
+        try {
+
+            CommentResult commentResult = httpCrawlerService.crawlCommentH5(sku);
+            jsonObject.put("code", 0);
+            jsonObject.put("result", commentResult);
+            jsonObject.put("message", "抓取成功");
+        } catch (Exception e) {
+            jsonObject.put("code", -1);
+            jsonObject.put("message", "抓取失败");
+        }
+        return jsonObject;
+    }
+
+    @RequestMapping("/searchPromotion")
+    @ResponseBody
+    public JSONObject searchPromotion(@RequestParam(value = "sku", required = false, defaultValue = "") String sku) {
+        JSONObject jsonObject = new JSONObject();
+        try {
+            CommentResult commentResult = httpCrawlerService.crawlCommentH5(sku);
+            String price = httpCrawlerService.crawlSkuPrice(sku);
+            List<String> adverts = httpCrawlerService.crawlSkuAdverts(sku, price);
+            Promotion promotion = httpCrawlerService.crawlSkuPromotion(sku, price);
+            JSONObject result = new JSONObject();
+            result.put("price", price);
+            result.put("adverts", adverts);
+            result.put("promotion", promotion);
+            result.put("comment", commentResult);
+            jsonObject.put("code", 0);
+            jsonObject.put("message", "抓取成功");
+            jsonObject.put("result", result);
+        } catch (Exception e) {
+            jsonObject.put("code", -1);
+            jsonObject.put("message", "抓取失败");
+        }
         return jsonObject;
     }
 
@@ -158,6 +208,48 @@ public class CrawlerController {
             chromeDriver.get("http://httpbin.org/ip");
             jsonObject.put("result", chromeDriver.getPageSource());
         }
+        return jsonObject;
+    }
+
+    @RequestMapping("/crawlKuaicheRank")
+    @ResponseBody
+    public JSONObject crawlKuaicheRank(@RequestParam(value = "equipment", required = false, defaultValue = "") String equipment,
+                                       @RequestParam(value = "area", required = false, defaultValue = "") String area,
+                                       @RequestParam(value = "areaValue", required = false, defaultValue = "") String areaValue,
+                                       @RequestParam(value = "keyword", required = false, defaultValue = "") String keyword,
+                                       @RequestParam(value = "pageNo", required = false, defaultValue = "") String pageNo,
+                                       @RequestParam(value = "position", required = false, defaultValue = "") String position) {
+        JSONObject jsonObject = new JSONObject();
+        if (!Pattern.matches("\\d+", position) || !Pattern.matches("\\d+", pageNo)) {
+            jsonObject.put("code", -1);
+            jsonObject.put("message", "参数错误");
+        }
+        List<KuaicheResult> results = dmpService.crawlKuaicheRank(equipment, area, areaValue, keyword, Integer.parseInt(position));
+        int pageNum = Integer.parseInt(pageNo) - 1;
+        int totalPage = (results.size() / 10) + 1;
+        if ("1".equals(equipment)) {
+            List<KuaicheResult> subResult = new ArrayList<>();
+            if (pageNum < totalPage - 1) {
+                subResult = results.subList(0 + pageNum * 10, pageNum * 10 + 10);
+            } else {
+                subResult = results.subList(0 + pageNum * 10, pageNum * 10 + results.size() % 10);
+            }
+            jsonObject.put("result", subResult);
+        } else {
+            jsonObject.put("result", results);
+        }
+        jsonObject.put("total", results.size());
+        jsonObject.put("code", 0);
+        jsonObject.put("message", "");
+        return jsonObject;
+    }
+
+    @RequestMapping("/testLoginDmp")
+    @ResponseBody
+    public JSONObject testLoginDmp() {
+        JSONObject jsonObject = new JSONObject();
+        List<LoginAccount> accountList = accountService.allAccounts();
+        accountList.stream().forEach(loginAccount -> loginService.doLoginDmp(loginAccount.getUserName(), loginAccount.getPassword()));
         return jsonObject;
     }
 }
