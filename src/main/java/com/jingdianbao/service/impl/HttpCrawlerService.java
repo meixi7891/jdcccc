@@ -13,6 +13,7 @@ import com.jingdianbao.webdriver.WebDriverActionDelegate;
 import org.apache.commons.io.FileUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.CookieStore;
+import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -70,10 +71,12 @@ public class HttpCrawlerService implements CrawlerService {
     public List<SearchResult> search(SearchRequest request) throws Exception {
         if (request.getSource().equals("PC")) {
             return searchPC(request);
-        } else if (request.getSource().equals("H5")) {
+                       } else if (request.getSource().equals("H5")) {
             return searchH5(request);
         } else if (request.getSource().equals("app")) {
             return searchApp(request);
+        } else if (request.getSource().equals("wqs")) {
+            return searchWqs(request);
         }
         return searchPC(request);
     }
@@ -1532,6 +1535,230 @@ public class HttpCrawlerService implements CrawlerService {
         }
         return "";
     }
+
+
+    private List<SearchResult> searchWqs(SearchRequest request) {
+        if (request.getType().equals("goods")) {
+            return searchGoodsWqs(request);
+        } else if (request.getType().equals("shop")) {
+            return searchShopWqs(request);
+        } else {
+            return searchCategoryWqs(request);
+        }
+    }
+
+    private List<SearchResult> searchGoodsWqs(SearchRequest request) {
+        List<SearchResult> resultList = new ArrayList<>();
+        Map<String, String> header = new HashMap<>();
+        CookieStore cookieStore = new BasicCookieStore();
+        cookieTool.loadCookie("search", "PC", cookieStore);
+        header.put("Cookie", cookieTool.getCookieStr(cookieStore));
+        int pageSize = 10;
+        try {
+            CloseableHttpResponse response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763", header, requestConfig);
+            String result = HttpUtil.readResponse(response);
+            result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
+            JSONObject jsonObject = JSON.parseObject(result);
+            int total = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONObject("Head").getJSONObject("Summary").getIntValue("ResultCount");
+            JSONArray array = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONArray("Paragraph");
+            Set<Integer> adPositionSet = new HashSet<>();
+            JSONArray adArray = jsonObject.getJSONObject("data").getJSONObject("adpos").getJSONArray("data");
+            for (int i = 0; i < adArray.size(); i++) {
+                adPositionSet.add(adArray.getJSONObject(i).getIntValue("flow_order"));
+            }
+            int rank = 0;
+            int page = 1;
+            int position = 0;
+            int rankWithAds = 0;
+            for (int i = 0; i < array.size(); i++) {
+                rank++;
+                position = i + 1;
+                JSONObject record = array.getJSONObject(i);
+                if (request.getSku().equals(record.getString("wareid"))) {
+                    SearchResult searchResult = new SearchResult();
+                    for (Integer adPosition : adPositionSet) {
+                        if (i + 1 >= adPosition) {
+                            position++;
+                        }
+                    }
+                    searchResult.setPage(page);
+                    searchResult.setPos(position);
+                    searchResult.setRank(rank);
+                    searchResult.setType(request.getType());
+                    searchResult.setKeyword(request.getKeyword());
+                    searchResult.setSku(record.getString("wareid"));
+                    searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                    crawlSkuDetail(searchResult);
+                    searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
+                    crawlCommentH5(searchResult);
+                    crawlFoldComments(searchResult);
+                    resultList.add(searchResult);
+                    return resultList;
+                }
+            }
+            rankWithAds = rankWithAds + array.size() + adArray.size();
+            int totalPage = (total + pageSize - 1) / pageSize;
+            for (int i = 2; i <= Math.min(50, totalPage); i++) {
+                response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763", header, requestConfig);
+                result = HttpUtil.readResponse(response);
+                result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
+                jsonObject = JSON.parseObject(result);
+                array = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONArray("Paragraph");
+                adArray = jsonObject.getJSONObject("data").getJSONObject("adpos").getJSONArray("data");
+                adPositionSet = new HashSet<>();
+                for (int j = 0; j < adArray.size(); j++) {
+                    adPositionSet.add(adArray.getJSONObject(j).getIntValue("flow_order"));
+                }
+                for (int j = 0; j < array.size(); j++) {
+                    rank++;
+                    position = j + 1;
+                    JSONObject record = array.getJSONObject(j);
+                    if (request.getSku().equals(record.getString("wareid"))) {
+                        SearchResult searchResult = new SearchResult();
+                        for (Integer adPosition : adPositionSet) {
+                            if (j + 1 >= adPosition) {
+                                position++;
+                            }
+                        }
+                        int totalPosition = position + rankWithAds;
+                        searchResult.setPos(totalPosition % pageSize);
+                        searchResult.setPage((totalPosition + pageSize - 1) / pageSize);
+                        searchResult.setRank(rank);
+                        searchResult.setType(request.getType());
+                        searchResult.setKeyword(request.getKeyword());
+                        searchResult.setSku(record.getString("wareid"));
+                        searchResult.setUrl("https://wqitem.jd.com/item/view?sku=" + searchResult.getSku());
+                        crawlSkuDetail(searchResult);
+                        searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
+                        crawlCommentH5(searchResult);
+                        crawlFoldComments(searchResult);
+                        resultList.add(searchResult);
+                        return resultList;
+                    }
+                }
+                rankWithAds = rankWithAds + array.size() + adArray.size();
+            }
+            LOGGER.error(result);
+        } catch (Exception e) {
+            LOGGER.error("", e);
+        }
+        return resultList;
+    }
+
+    private List<SearchResult> searchShopWqs(SearchRequest request) {
+        List<SearchResult> resultList = new ArrayList<>();
+        Map<String, String> header = new HashMap<>();
+        CookieStore cookieStore = new BasicCookieStore();
+        cookieTool.loadCookie("search", "PC", cookieStore);
+        header.put("Cookie", cookieTool.getCookieStr(cookieStore));
+        int pageSize = 10;
+        try {
+            CloseableHttpResponse response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763", header, requestConfig);
+            String result = HttpUtil.readResponse(response);
+            result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
+            JSONObject jsonObject = JSON.parseObject(result);
+            int total = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONObject("Head").getJSONObject("Summary").getIntValue("ResultCount");
+            JSONArray array = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONArray("Paragraph");
+            JSONArray adArray = jsonObject.getJSONObject("data").getJSONObject("adpos").getJSONArray("data");
+            Set<Integer> adPositionSet = new HashSet<>();
+            for (int i = 0; i < adArray.size(); i++) {
+                adPositionSet.add(adArray.getJSONObject(i).getIntValue("flow_order"));
+            }
+            int rank = 0;
+            int page = 1;
+            int position = 0;
+            int rankWithAds = 0;
+            for (int i = 0; i < array.size(); i++) {
+                rank++;
+                position = i + 1;
+                JSONObject record = array.getJSONObject(i);
+                SearchResult searchResult = new SearchResult();
+                searchResult.setSku(record.getString("wareid"));
+                crawlSkuDetail(searchResult);
+                if (searchResult.getShop().contains(request.getShop())) {
+                    searchResult.setPage(page);
+                    for (Integer adPosition : adPositionSet) {
+                        if (i + 1 >= adPosition) {
+                            position++;
+                        }
+                    }
+                    searchResult.setPos(position);
+                    searchResult.setRank(rank);
+                    searchResult.setType(request.getType());
+                    searchResult.setKeyword(request.getKeyword());
+                    searchResult.setSku(record.getString("wareid"));
+                    searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                    crawlSkuDetail(searchResult);
+                    searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
+                    crawlCommentH5(searchResult);
+                    crawlFoldComments(searchResult);
+                    resultList.add(searchResult);
+                    if (resultList.size() >= 3) {
+                        return resultList;
+                    }
+                }
+            }
+            rankWithAds = rankWithAds + array.size() + adArray.size();
+            int totalPage = (total + pageSize - 1) / pageSize;
+            for (int i = 2; i <= Math.min(50, totalPage); i++) {
+                response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763", header, requestConfig);
+                result = HttpUtil.readResponse(response);
+                result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
+                jsonObject = JSON.parseObject(result);
+                array = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONArray("Paragraph");
+                adArray = jsonObject.getJSONObject("data").getJSONObject("adpos").getJSONArray("data");
+                adPositionSet = new HashSet<>();
+                for (int j = 0; j < adArray.size(); j++) {
+                    adPositionSet.add(adArray.getJSONObject(j).getIntValue("flow_order"));
+                }
+                for (int j = 0; j < array.size(); j++) {
+                    rank++;
+                    position = j + 1;
+                    JSONObject record = array.getJSONObject(j);
+                    SearchResult searchResult = new SearchResult();
+                    searchResult.setSku(record.getString("wareid"));
+                    crawlSkuDetail(searchResult);
+                    if (searchResult.getShop().contains(request.getShop())) {
+                        for (Integer adPosition : adPositionSet) {
+                            if (j + 1 >= adPosition) {
+                                position++;
+                            }
+                        }
+                        int totalPosition = position + rankWithAds;
+                        searchResult.setPos(totalPosition % pageSize);
+                        searchResult.setPage((totalPosition + pageSize - 1) / pageSize);
+                        searchResult.setRank(rank);
+                        searchResult.setType(request.getType());
+                        searchResult.setKeyword(request.getKeyword());
+                        searchResult.setSku(record.getString("wareid"));
+                        searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                        crawlSkuDetail(searchResult);
+                        searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
+                        crawlCommentH5(searchResult);
+                        crawlFoldComments(searchResult);
+                        resultList.add(searchResult);
+                        if (resultList.size() >= 3) {
+                            return resultList;
+                        }
+                    }
+                }
+                rankWithAds = rankWithAds + array.size() + adArray.size();
+            }
+            LOGGER.error(result);
+        } catch (Exception e) {
+            LOGGER.error("", e);
+        }
+        return resultList;
+    }
+
+    private List<SearchResult> searchCategoryWqs(SearchRequest request) {
+        List<SearchResult> resultList = new ArrayList<>();
+        SearchResult searchResult = new SearchResult();
+        searchResult.setSku(request.getSku());
+        crawlSkuDetail(searchResult);
+        return resultList;
+    }
+
 
     private List<SearchResult> searchApp(SearchRequest request) {
         List<SearchResult> resultList = new ArrayList<>();
