@@ -24,11 +24,13 @@ public class ProxyService {
 
     private CopyOnWriteArrayList<String> proxyPool = new CopyOnWriteArrayList();
 
-    private String url = "http://webapi.http.zhimacangku.com/getip?num=1&type=2&pro=&city=0&yys=0&port=1&pack=18569&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=1&regions=";
+    private String url = "http://webapi.http.zhimacangku.com/getip?num=12&type=2&pro=&city=0&yys=0&port=1&pack=19287&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=1&regions=";
+
+    private static final int PROXY_POLL_SIZE = 12;
 
     public String getRandomProxy() {
         Random random = new Random();
-        int index = random.nextInt(10);
+        int index = random.nextInt(proxyPool.size());
         if (index < proxyPool.size()) {
             return proxyPool.get(index);
         } else {
@@ -66,8 +68,8 @@ public class ProxyService {
     }
 
 
-    //    @PostConstruct
-//    @Scheduled(cron = "0 0/30 * * * ?")
+    @PostConstruct
+    @Scheduled(cron = "0 0 */3 * * ?")
     private void loadProxy() {
         try {
             CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
@@ -89,12 +91,14 @@ public class ProxyService {
                     String ip = object.getString("ip");
                     String port = object.getString("port");
                     proxyPool.add(0, ip + ":" + port);
+                    LOGGER.error("add proxy into proxy pool : " + ip + ":" + port);
                 }
             }
-            int size = proxyPool.size() - 10;
+            int size = proxyPool.size() - PROXY_POLL_SIZE;
             for (int i = 0; i < size; i++) {
-                proxyPool.remove(10);
+                proxyPool.remove(PROXY_POLL_SIZE);
             }
+            LOGGER.error("proxy pool size : " + proxyPool.size());
         } catch (Exception e) {
             LOGGER.error("load proxy error", e);
         }

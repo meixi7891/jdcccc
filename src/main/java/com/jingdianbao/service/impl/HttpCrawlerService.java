@@ -71,7 +71,7 @@ public class HttpCrawlerService implements CrawlerService {
     public List<SearchResult> search(SearchRequest request) throws Exception {
         if (request.getSource().equals("PC")) {
             return searchPC(request);
-                       } else if (request.getSource().equals("H5")) {
+        } else if (request.getSource().equals("H5")) {
             return searchH5(request);
         } else if (request.getSource().equals("app")) {
             return searchApp(request);
@@ -1638,7 +1638,6 @@ public class HttpCrawlerService implements CrawlerService {
                 }
                 rankWithAds = rankWithAds + array.size() + adArray.size();
             }
-            LOGGER.error(result);
         } catch (Exception e) {
             LOGGER.error("", e);
         }
@@ -1744,7 +1743,6 @@ public class HttpCrawlerService implements CrawlerService {
                 }
                 rankWithAds = rankWithAds + array.size() + adArray.size();
             }
-            LOGGER.error(result);
         } catch (Exception e) {
             LOGGER.error("", e);
         }
@@ -1756,6 +1754,7 @@ public class HttpCrawlerService implements CrawlerService {
         SearchResult searchResult = new SearchResult();
         searchResult.setSku(request.getSku());
         crawlSkuDetail(searchResult);
+
         return resultList;
     }
 

@@ -188,7 +188,7 @@ public class DmpService {
             CloseableHttpResponse response = httpClient.execute(httpPost);
             String result = HttpUtil.readResponse(response);
             JSONObject jsonObject = JSONObject.parseObject(result);
-            if(jsonObject==null){
+            if (jsonObject == null) {
                 LOGGER.error(result);
                 return dmpResult;
             }
@@ -218,7 +218,7 @@ public class DmpService {
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(10000).setConnectionRequestTimeout(10000)
                 .setSocketTimeout(10000).build();
-        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient(proxyService.getProxy());
+        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient(proxyService.getRandomProxy());
         try {
             HttpPost httpPost = new HttpPost("https://jzt.jd.com/kc/generalizeCondition/genCondSearch");
             httpPost.addHeader("Referer", "https://jzt.jd.com/kc/generalizeCondition/genCondSearch");
