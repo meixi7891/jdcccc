@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.jingdianbao.entity.*;
 import com.jingdianbao.http.HttpClientFactory;
+import com.jingdianbao.job.WqsCatUrlLoadJob;
 import com.jingdianbao.service.CrawlerService;
 import com.jingdianbao.util.CookieTool;
 import com.jingdianbao.util.HttpUtil;
@@ -29,6 +30,8 @@ import org.jsoup.select.Elements;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.interactions.TouchScreen;
+import org.openqa.selenium.interactions.touch.TouchActions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +65,8 @@ public class HttpCrawlerService implements CrawlerService {
     private ProxyService proxyService;
     @Autowired
     private CookieTool cookieTool;
+    @Autowired
+    private WqsCatUrlLoadJob wqsCatUrlLoadJob;
 
     private RequestConfig requestConfig = RequestConfig.custom()
             .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
@@ -1587,7 +1592,7 @@ public class HttpCrawlerService implements CrawlerService {
                     searchResult.setType(request.getType());
                     searchResult.setKeyword(request.getKeyword());
                     searchResult.setSku(record.getString("wareid"));
-                    searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                    searchResult.setUrl("https://wqitem.jd.com/item/view?sku=" + searchResult.getSku());
                     crawlSkuDetail(searchResult);
                     searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
                     crawlCommentH5(searchResult);
@@ -1686,7 +1691,7 @@ public class HttpCrawlerService implements CrawlerService {
                     searchResult.setType(request.getType());
                     searchResult.setKeyword(request.getKeyword());
                     searchResult.setSku(record.getString("wareid"));
-                    searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                    searchResult.setUrl("https://wqitem.jd.com/item/view?sku=" + searchResult.getSku());
                     crawlSkuDetail(searchResult);
                     searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
                     crawlCommentH5(searchResult);
@@ -1730,7 +1735,7 @@ public class HttpCrawlerService implements CrawlerService {
                         searchResult.setType(request.getType());
                         searchResult.setKeyword(request.getKeyword());
                         searchResult.setSku(record.getString("wareid"));
-                        searchResult.setUrl("https://item.m.jd.com/product/" + searchResult.getSku() + ".html");
+                        searchResult.setUrl("https://wqitem.jd.com/item/view?sku=" + searchResult.getSku());
                         crawlSkuDetail(searchResult);
                         searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
                         crawlCommentH5(searchResult);
@@ -1754,8 +1759,119 @@ public class HttpCrawlerService implements CrawlerService {
         SearchResult searchResult = new SearchResult();
         searchResult.setSku(request.getSku());
         crawlSkuDetail(searchResult);
-
+        List<CatUrl> catUrlList = wqsCatUrlLoadJob.getCatUrlList();
+        for (CatUrl catUrl : catUrlList) {
+            if (catUrl.catName.equals(searchResult.getCategory().getLevel3())) {
+                if (searchCategoryWqsSkuWithUrl(searchResult, catUrl.url)) {
+                    searchResult.setType(request.getType());
+                    searchResult.setKeyword(request.getKeyword());
+                    searchResult.setUrl("https://wqitem.jd.com/item/view?sku=" + searchResult.getSku());
+                    resultList.add(searchResult);
+                    break;
+                }
+            }
+        }
         return resultList;
+    }
+
+    private boolean searchCategoryWqsSkuWithUrl(SearchResult searchResult, String url) {
+        Map<String, String> header = new HashMap<>();
+        CookieStore cookieStore = new BasicCookieStore();
+        cookieTool.loadCookie("search", "PC", cookieStore);
+        header.put("Cookie", cookieTool.getCookieStr(cookieStore));
+        int pageSize = 10;
+        try {
+            Pattern pattern = Pattern.compile("key=([\\S]+?)&");
+            Matcher matcher = pattern.matcher(url);
+            if (matcher.find()) {
+                String keyword = URLDecoder.decode(matcher.group(1).trim(), "utf-8");
+                CloseableHttpResponse response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(keyword, "utf-8") + "&datatype=1&callback=jdSearchResultBkCbA&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=152462600", header, requestConfig);
+                String result = HttpUtil.readResponse(response);
+                result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
+                JSONObject jsonObject = JSON.parseObject(result);
+                int total = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONObject("Head").getJSONObject("Summary").getIntValue("ResultCount");
+                JSONArray array = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONArray("Paragraph");
+                JSONArray adArray = jsonObject.getJSONObject("data").getJSONObject("adpos").getJSONArray("data");
+                Set<Integer> adPositionSet = new HashSet<>();
+                for (int i = 0; i < adArray.size(); i++) {
+                    adPositionSet.add(adArray.getJSONObject(i).getIntValue("flow_order"));
+                }
+                int rank = 0;
+                int position = 0;
+                int rankWithAds = 0;
+                for (int i = 0; i < array.size(); i++) {
+                    rank++;
+                    position = i + 1;
+                    JSONObject record = array.getJSONObject(i);
+
+                    if (searchResult.getSku().equals(record.getString("wareid"))) {
+                        for (Integer adPosition : adPositionSet) {
+                            if (i + 1 >= adPosition) {
+                                position++;
+                            }
+                        }
+                        int totalPosition = position + rankWithAds;
+                        searchResult.setPos(totalPosition % pageSize);
+                        searchResult.setPage((totalPosition + pageSize - 1) / pageSize);
+                        searchResult.setRank(rank);
+                        searchResult.setSku(record.getString("wareid"));
+                        searchResult.setUrl("https://wqitem.jd.com/item/view?sku=" + searchResult.getSku());
+                        crawlSkuDetail(searchResult);
+                        searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
+                        crawlCommentH5(searchResult);
+                        crawlFoldComments(searchResult);
+                        return true;
+                    }
+                }
+                rankWithAds = rankWithAds + array.size() + adArray.size();
+                int totalPage = (total + pageSize - 1) / pageSize;
+                for (int i = 2; i <= Math.min(50, totalPage); i++) {
+                    response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + keyword + "&datatype=1&callback=jdSearchResultBkCbA&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=152462600", header, requestConfig);
+                    result = HttpUtil.readResponse(response);
+                    result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
+                    jsonObject = JSON.parseObject(result);
+                    array = jsonObject.getJSONObject("data").getJSONObject("searchm").getJSONArray("Paragraph");
+                    adArray = jsonObject.getJSONObject("data").getJSONObject("adpos").getJSONArray("data");
+                    adPositionSet = new HashSet<>();
+                    for (int j = 0; j < adArray.size(); j++) {
+                        adPositionSet.add(adArray.getJSONObject(j).getIntValue("flow_order"));
+                    }
+                    for (int j = 0; j < array.size(); j++) {
+                        rank++;
+                        position = j + 1;
+                        JSONObject record = array.getJSONObject(j);
+                        if (searchResult.getSku().equals(record.getString("wareid"))) {
+                            for (Integer adPosition : adPositionSet) {
+                                if (i + 1 >= adPosition) {
+                                    position++;
+                                }
+                            }
+                            int totalPosition = position + rankWithAds;
+                            searchResult.setPos(totalPosition % pageSize);
+                            searchResult.setPage((totalPosition + pageSize - 1) / pageSize);
+                            searchResult.setRank(rank);
+                            searchResult.setSku(record.getString("wareid"));
+                            searchResult.setUrl("https://wqitem.jd.com/item/view?sku=" + searchResult.getSku());
+                            crawlSkuDetail(searchResult);
+                            searchResult.setImg("//img14.360buyimg.com/n8/s370x474_" + record.getJSONObject("Content").getString("imageurl"));
+                            crawlCommentH5(searchResult);
+                            crawlFoldComments(searchResult);
+                            return true;
+                        }
+                    }
+                    rankWithAds = rankWithAds + array.size() + adArray.size();
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("", e);
+        }
+        return false;
+    }
+
+
+    public static class CatUrl {
+        public String catName;
+        public String url;
     }
 
 

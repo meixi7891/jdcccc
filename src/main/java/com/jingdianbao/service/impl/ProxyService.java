@@ -20,7 +20,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Component
 public class ProxyService {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(HttpCrawlerService.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProxyService.class);
 
     private CopyOnWriteArrayList<String> proxyPool = new CopyOnWriteArrayList();
 

@@ -208,9 +208,6 @@ public class DmpService {
         if (loginAccount != null) {
             while (!loginService.testLogin(loginAccount.getUserName(), loginAccount.getPassword())) {
                 loginTask.addLoginTask(loginAccount);
-                if (accountService.accountCount() == loginTask.getTaskSize()) {
-                    return results;
-                }
                 loginAccount = accountService.loadRandomDmpAccount();
             }
         }

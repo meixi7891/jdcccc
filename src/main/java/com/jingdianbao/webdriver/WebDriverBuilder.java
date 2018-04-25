@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
@@ -94,6 +96,21 @@ public class WebDriverBuilder {
             LOGGER.error("======================start chrome error", e);
             return null;
         }
+    }
+
+    public ChromeDriver getH5Driver() {
+        Map<String, String> mobileEmulation = new HashMap<>();
+        mobileEmulation.put("deviceName", "iPhone X");
+        ChromeOptions chromeOptions = new ChromeOptions();
+        chromeOptions.setExperimentalOption("mobileEmulation", mobileEmulation);
+        chromeOptions.addArguments("--no-sandbox");
+//        System.setProperty("webdriver.chrome.driver", "E:\\chromedriver_win32\\chromedriver.exe");
+//        chromeOptions.setBinary("C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe");
+        System.setProperty("webdriver.chrome.driver", chromeDriverPath);
+        chromeOptions.setBinary(chromeBinPath);
+        chromeOptions.setHeadless(true);
+        ChromeDriver driver = new ChromeDriver(chromeOptions);
+        return driver;
     }
 
     public void returnDriver(ChromeDriver chromeDriver) {
