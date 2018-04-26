@@ -31,11 +31,12 @@ public class WqsCatUrlLoadJob {
 
     private volatile boolean loading = false;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(ProxyService.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(WqsCatUrlLoadJob.class);
 
     @PostConstruct
     @Scheduled(cron = "0 0 0 * * ?")
     private void load() {
+        LOGGER.error("=============== load wqs category url start ==================");
         List<HttpCrawlerService.CatUrl> newCatUrlList = new ArrayList<>();
         ChromeDriver webDriver = webDriverBuilder.getH5Driver();
         webDriver.get("http://wqs.jd.com/portal/sq/category_q.shtml?shownav=1&ptag=137652.25.4");
@@ -53,7 +54,6 @@ public class WqsCatUrlLoadJob {
                 catUrl.catName = e1.text() ;
                 catUrl.url = e1.attr("target");
                 newCatUrlList.add(catUrl);
-                LOGGER.error("add category , name : " + catUrl.catName + " , url : " + catUrl.url);
             }
         }
         webDriver.quit();
@@ -62,6 +62,7 @@ public class WqsCatUrlLoadJob {
             catUrlList = newCatUrlList;
             loading = false;
         }
+        LOGGER.error("=============== load wqs category url end ==================");
     }
 
     public List<HttpCrawlerService.CatUrl> getCatUrlList() {

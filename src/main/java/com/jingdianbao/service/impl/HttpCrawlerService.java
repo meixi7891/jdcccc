@@ -69,8 +69,8 @@ public class HttpCrawlerService implements CrawlerService {
     private WqsCatUrlLoadJob wqsCatUrlLoadJob;
 
     private RequestConfig requestConfig = RequestConfig.custom()
-            .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
-            .setSocketTimeout(5000).build();
+            .setConnectTimeout(10000).setConnectionRequestTimeout(10000)
+            .setSocketTimeout(10000).build();
 
     @Override
     public List<SearchResult> search(SearchRequest request) throws Exception {
@@ -457,9 +457,7 @@ public class HttpCrawlerService implements CrawlerService {
                         }
                     }
                 }
-
             }
-
         } catch (Exception e) {
             LOGGER.error("", e);
         }
@@ -707,20 +705,48 @@ public class HttpCrawlerService implements CrawlerService {
 
     private String getCategorySortType(String sortType) {
         switch (sortType) {
+            //价格降序
             case "1":
                 return "sort_dredisprice_desc";
+            //价格升序
             case "2":
                 return "sort_dredisprice_asc";
+            //销量降序
             case "3":
                 return "sort_totalsales15_desc";
+            //评论降序
             case "4":
                 return "sort_commentcount_desc";
+            //新品
             case "5":
                 return "sort_winsdate_desc";
             default:
                 return "sort_rank_asc";
         }
     }
+
+    private String getH5SortType(String sortType) {
+        switch (sortType) {
+            //价格降序
+            case "1":
+                return "2";
+            //价格升序
+            case "2":
+                return "3";
+            //销量降序
+            case "3":
+                return "1";
+            //评论降序
+            case "4":
+                return "6";
+            //新品
+            case "5":
+                return "5";
+            default:
+                return "";
+        }
+    }
+
 
 
     public void crawlSkuDetail(final SearchResult searchResult) {
@@ -933,10 +959,10 @@ public class HttpCrawlerService implements CrawlerService {
                 JSONArray skuCoupons = jsonObject.getJSONArray("skuCoupon");
                 for (int i = 0; i < skuCoupons.size(); i++) {
                     JSONObject skuCoupon = skuCoupons.getJSONObject(i);
-                    if (skuCoupon.getIntValue("couponKind") == 3) {
-                        promotion.getCoupons().add(skuCoupon.getString("allDesc"));
-                    } else if (skuCoupon.getIntValue("couponKind") == 2) {
+                    if (skuCoupon.getIntValue("couponType") == 1) {
                         promotion.getCoupons().add("满" + skuCoupon.getString("quota") + "减" + skuCoupon.getString("trueDiscount"));
+                    } else {
+                        promotion.getCoupons().add(skuCoupon.getString("allDesc"));
                     }
                 }
             }
@@ -1370,6 +1396,9 @@ public class HttpCrawlerService implements CrawlerService {
         } else {
             nvps.add(new BasicNameValuePair("keyword", keyword));
         }
+        if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+            nvps.add(new BasicNameValuePair("sort", getH5SortType(request.getSortType())));
+        }
         if (!request.getPriceLow().isEmpty() || !request.getPriceHigh().isEmpty()) {
             JSONArray jsonArray = new JSONArray();
             JSONObject jsonObject = new JSONObject();
@@ -1560,7 +1589,12 @@ public class HttpCrawlerService implements CrawlerService {
         header.put("Cookie", cookieTool.getCookieStr(cookieStore));
         int pageSize = 10;
         try {
-            CloseableHttpResponse response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763", header, requestConfig);
+            String url = "http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763";
+            if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+                url = url + "&sort_type=" + getCategorySortType(request.getSortType());
+            }
+
+            CloseableHttpResponse response = HttpUtil.doGet(url, header, requestConfig);
             String result = HttpUtil.readResponse(response);
             result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
             JSONObject jsonObject = JSON.parseObject(result);
@@ -1604,7 +1638,11 @@ public class HttpCrawlerService implements CrawlerService {
             rankWithAds = rankWithAds + array.size() + adArray.size();
             int totalPage = (total + pageSize - 1) / pageSize;
             for (int i = 2; i <= Math.min(50, totalPage); i++) {
-                response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763", header, requestConfig);
+                url = "http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763";
+                if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+                    url = url + "&sort_type=" + getCategorySortType(request.getSortType());
+                }
+                response = HttpUtil.doGet(url, header, requestConfig);
                 result = HttpUtil.readResponse(response);
                 result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
                 jsonObject = JSON.parseObject(result);
@@ -1657,7 +1695,11 @@ public class HttpCrawlerService implements CrawlerService {
         header.put("Cookie", cookieTool.getCookieStr(cookieStore));
         int pageSize = 10;
         try {
-            CloseableHttpResponse response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763", header, requestConfig);
+            String url = "http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763";
+            if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+                url = url + "&sort_type=" + getCategorySortType(request.getSortType());
+            }
+            CloseableHttpResponse response = HttpUtil.doGet(url, header, requestConfig);
             String result = HttpUtil.readResponse(response);
             result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
             JSONObject jsonObject = JSON.parseObject(result);
@@ -1705,7 +1747,11 @@ public class HttpCrawlerService implements CrawlerService {
             rankWithAds = rankWithAds + array.size() + adArray.size();
             int totalPage = (total + pageSize - 1) / pageSize;
             for (int i = 2; i <= Math.min(50, totalPage); i++) {
-                response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763", header, requestConfig);
+                url = "http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(request.getKeyword(), "utf-8") + "&datatype=1&callback=jdSearchResultBkCbB&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=1524462928763";
+                if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+                    url = url + "&sort_type=" + getCategorySortType(request.getSortType());
+                }
+                response = HttpUtil.doGet(url, header, requestConfig);
                 result = HttpUtil.readResponse(response);
                 result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
                 jsonObject = JSON.parseObject(result);
@@ -1762,7 +1808,7 @@ public class HttpCrawlerService implements CrawlerService {
         List<CatUrl> catUrlList = wqsCatUrlLoadJob.getCatUrlList();
         for (CatUrl catUrl : catUrlList) {
             if (catUrl.catName.equals(searchResult.getCategory().getLevel3())) {
-                if (searchCategoryWqsSkuWithUrl(searchResult, catUrl.url)) {
+                if (searchCategoryWqsSkuWithUrl(searchResult, catUrl.url, request)) {
                     searchResult.setType(request.getType());
                     searchResult.setKeyword(request.getKeyword());
                     searchResult.setUrl("https://wqitem.jd.com/item/view?sku=" + searchResult.getSku());
@@ -1774,7 +1820,7 @@ public class HttpCrawlerService implements CrawlerService {
         return resultList;
     }
 
-    private boolean searchCategoryWqsSkuWithUrl(SearchResult searchResult, String url) {
+    private boolean searchCategoryWqsSkuWithUrl(SearchResult searchResult, String url, SearchRequest request) {
         Map<String, String> header = new HashMap<>();
         CookieStore cookieStore = new BasicCookieStore();
         cookieTool.loadCookie("search", "PC", cookieStore);
@@ -1785,7 +1831,12 @@ public class HttpCrawlerService implements CrawlerService {
             Matcher matcher = pattern.matcher(url);
             if (matcher.find()) {
                 String keyword = URLDecoder.decode(matcher.group(1).trim(), "utf-8");
-                CloseableHttpResponse response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(keyword, "utf-8") + "&datatype=1&callback=jdSearchResultBkCbA&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=152462600", header, requestConfig);
+                String proxy = proxyService.getRandomProxy();
+                String crawlUrl = "http://wqsou.jd.com/search/searchn?key=" + URLEncoder.encode(keyword, "utf-8") + "&datatype=1&callback=jdSearchResultBkCbA&page=1&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=152462600";
+                if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+                    crawlUrl = crawlUrl + "&sort_type=" + getCategorySortType(request.getSortType());
+                }
+                CloseableHttpResponse response = HttpUtil.doGet(crawlUrl, header, requestConfig, proxy);
                 String result = HttpUtil.readResponse(response);
                 result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
                 JSONObject jsonObject = JSON.parseObject(result);
@@ -1826,7 +1877,11 @@ public class HttpCrawlerService implements CrawlerService {
                 rankWithAds = rankWithAds + array.size() + adArray.size();
                 int totalPage = (total + pageSize - 1) / pageSize;
                 for (int i = 2; i <= Math.min(50, totalPage); i++) {
-                    response = HttpUtil.doGet("http://wqsou.jd.com/search/searchn?key=" + keyword + "&datatype=1&callback=jdSearchResultBkCbA&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=152462600", header, requestConfig);
+                    crawlUrl = "http://wqsou.jd.com/search/searchn?key=" + keyword + "&datatype=1&callback=jdSearchResultBkCbA&page=" + i + "&pagesize=10&ext_attr=no&brand_col=no&price_col=no&color_col=no&size_col=no&ext_attr_sort=no&merge_sku=yes&multi_suppliers=yes&area_ids=1,72,4137&qp_disable=no&fdesc=%E5%8C%97%E4%BA%AC&t1=152462600";
+                    if (request.getSortType() != null && !"0".equals(request.getSortType())) {
+                        crawlUrl = crawlUrl + "&sort_type=" + getCategorySortType(request.getSortType());
+                    }
+                    response = HttpUtil.doGet(crawlUrl, header, requestConfig, proxy);
                     result = HttpUtil.readResponse(response);
                     result = result.replaceAll("^\\w+\\(", "").replaceAll("\\)$", "");
                     jsonObject = JSON.parseObject(result);

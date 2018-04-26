@@ -53,6 +53,17 @@ public class HttpUtil {
         return response;
     }
 
+    public static CloseableHttpResponse doGet(String url, Map<String, String> header, RequestConfig requestConfig,String proxy) throws IOException {
+        HttpGet httpGet = new HttpGet(url);
+        for (Map.Entry<String, String> entry : header.entrySet()) {
+            httpGet.addHeader(entry.getKey(), entry.getValue());
+        }
+        httpGet.setConfig(requestConfig);
+        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient(proxy);
+        CloseableHttpResponse response = httpClient.execute(httpGet);
+        return response;
+    }
+
     public static JSONObject readJSONResponse(CloseableHttpResponse response) {
         BufferedReader reader = null;
         try {
