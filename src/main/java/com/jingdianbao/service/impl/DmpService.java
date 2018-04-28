@@ -164,7 +164,7 @@ public class DmpService {
                 loginAccount = accountService.loadRandomDmpAccount();
             }
         }
-        cookieTool.loadCookie(request.getUserName(), request.getPassword(), cookieStore);
+        cookieTool.loadCookie(loginAccount.getUserName(), loginAccount.getPassword(), cookieStore);
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(10000).setConnectionRequestTimeout(10000)
                 .setSocketTimeout(10000).build();
