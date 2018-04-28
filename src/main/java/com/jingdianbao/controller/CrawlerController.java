@@ -57,9 +57,10 @@ public class CrawlerController {
                              @RequestParam(value = "sortType", required = false, defaultValue = "") String sortType,
                              @RequestParam(value = "shop", required = false, defaultValue = "") String shop,
                              @RequestParam(value = "priceStart", required = false, defaultValue = "") String priceStart,
-                             @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd) {
+                             @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd, @RequestParam(value = "priceStart", required = false, defaultValue = "") String pageStart,
+                             @RequestParam(value = "priceEnd", required = false, defaultValue = "") String pageEnd) {
 
-        SearchRequest request = new SearchRequest(type, source, keyword, sku, sortType, shop, priceStart, priceEnd);
+        SearchRequest request = new SearchRequest(type, source, keyword, sku, sortType, shop, priceStart, priceEnd, pageStart, pageEnd);
         List<SearchResult> resultList = new ArrayList<>();
         JSONObject jsonObject = new JSONObject();
         try {
@@ -84,9 +85,10 @@ public class CrawlerController {
             @RequestParam(value = "sortType", required = false, defaultValue = "") String sortType,
             @RequestParam(value = "shop", required = false, defaultValue = "") String shop,
             @RequestParam(value = "priceStart", required = false, defaultValue = "") String priceStart,
-            @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd) {
+            @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd, @RequestParam(value = "priceStart", required = false, defaultValue = "") String pageStart,
+            @RequestParam(value = "priceEnd", required = false, defaultValue = "") String pageEnd) {
         JSONObject jsonObject = new JSONObject();
-        SearchRequest request = new SearchRequest(type, "PC", keyword, sku, sortType, shop, priceStart, priceEnd);
+        SearchRequest request = new SearchRequest(type, "PC", keyword, sku, sortType, shop, priceStart, priceEnd, pageStart, pageEnd);
         List<SearchResult> resultList = new ArrayList<>();
         List<SearchMergedResult> result = new ArrayList<>();
         try {
@@ -106,12 +108,12 @@ public class CrawlerController {
                 }
             }
             for (SearchResult searchResult : resultList) {
-                if(!mergedSkuSet.contains(searchResult.getSku())){
+                if (!mergedSkuSet.contains(searchResult.getSku())) {
                     SearchMergedResult h5SearchMergedResult = new SearchMergedResult(searchResult, request.getSource());
                     result.add(h5SearchMergedResult);
                 }
             }
-            for(SearchMergedResult searchMergedResult : result){
+            for (SearchMergedResult searchMergedResult : result) {
                 searchMergedResult.setPrice(httpCrawlerService.crawlSkuPrice(searchMergedResult.getSku()));
                 searchMergedResult.setAdverts(httpCrawlerService.crawlSkuAdverts(searchMergedResult.getSku(), searchMergedResult.getPrice()));
                 searchMergedResult.setPromotion(httpCrawlerService.crawlSkuPromotion(searchMergedResult.getSku(), searchMergedResult.getPrice()));
@@ -165,6 +167,7 @@ public class CrawlerController {
             if (searchResult.getCategory() != null) {
                 result.put("category", searchResult.getCategory());
             }
+            result.put("shop", searchResult.getShop());
             jsonObject.put("code", 0);
             jsonObject.put("message", "抓取成功");
             jsonObject.put("result", result);

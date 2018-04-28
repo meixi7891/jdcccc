@@ -119,8 +119,12 @@ public class HttpClientFactory {
                 return false;
             }
         };
-        String[] ss = proxy.split(":");
-        return HttpClients.custom().setProxy(new HttpHost(ss[0], Integer.parseInt(ss[1]))).setSSLSocketFactory(getSSLConnectionSocketFactory()).setRetryHandler(httpRequestRetryHandler).build();
+        if (proxy != null) {
+            String[] ss = proxy.split(":");
+            return HttpClients.custom().setProxy(new HttpHost(ss[0], Integer.parseInt(ss[1]))).setSSLSocketFactory(getSSLConnectionSocketFactory()).setRetryHandler(httpRequestRetryHandler).build();
+        } else {
+            return HttpClients.custom().setSSLSocketFactory(getSSLConnectionSocketFactory()).setRetryHandler(httpRequestRetryHandler).build();
+        }
     }
 
     /**

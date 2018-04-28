@@ -101,35 +101,30 @@ public class HttpCrawlerService implements CrawlerService {
             String pvid = uuid();
             String keyword = URLEncoder.encode(request.getKeyword(), "utf-8");
             String refer = "https://search.jd.com/Search?keyword=" + keyword + "&enc=utf-8&pvid=" + pvid;
-            String url = "https://search.jd.com/s_new.php?keyword=" + keyword + "&enc=utf-8&qrst=1&rt=1&stop=1&vt=2&scrolling=y&click=0";
+            String host = "https://search.jd.com";
+            String path = "/s_new.php?keyword=" + keyword + "&enc=utf-8&qrst=1&rt=1&stop=1&vt=2&wq=" + keyword;
             int s = 1;
             if (request.getSortType() != null && !"0".equals(request.getSortType())) {
                 refer = refer + "&psort=" + request.getSortType();
-                url = url + "&psort=" + request.getSortType();
+                path = path + "&psort=" + request.getSortType();
             }
             if (!request.getPriceLow().isEmpty() || !request.getPriceHigh().isEmpty()) {
                 if (!request.getPriceLow().isEmpty() && request.getPriceHigh().isEmpty()) {
                     refer = refer + "&ev=exprice_" + request.getPriceLow() + "gt%5E";
-                    url = url + "&ev=exprice_" + request.getPriceLow() + "gt%5E";
+                    path = path + "&ev=exprice_" + request.getPriceLow() + "gt%5E";
                 } else if (request.getPriceLow().isEmpty() && !request.getPriceHigh().isEmpty()) {
                     refer = refer + "&ev=exprice_0-" + request.getPriceHigh() + "%5E";
-                    url = url + "&ev=exprice_0-" + request.getPriceHigh() + "%5E";
+                    path = path + "&ev=exprice_0-" + request.getPriceHigh() + "%5E";
                 } else {
                     refer = refer + "&ev=exprice_" + request.getPriceLow() + "-" + request.getPriceHigh() + "%5E";
-                    url = url + "&ev=exprice_" + request.getPriceLow() + "-" + request.getPriceHigh() + "%5E";
+                    path = path + "&ev=exprice_" + request.getPriceLow() + "-" + request.getPriceHigh() + "%5E";
                 }
             }
+            String proxy = proxyService.getRandomProxy();
             String sku = request.getSku();
-            String pa = "<li\\s+class=\"gl-item(\\s+gl-item-presell)?\"\\s+data-sku=\"\\d+\"\\s+data-spu=\"\\d+\" data-pid=\"\\d+\">|<li\\s+data-sku=\"\\d+\"\\s+class=\"gl-item(\\s+gl-item-presell)?\">";
-            Pattern p = Pattern.compile(pa);
-            Pattern skuPattern = Pattern.compile("data-sku=\"(\\d+)\"");
-            Pattern pidPattern = Pattern.compile("data-pid=\"(\\d+)\"");
-            RequestConfig requestConfig = RequestConfig.custom()
-                    .setConnectTimeout(5000).setConnectionRequestTimeout(1000)
-                    .setSocketTimeout(5000).build();
             CookieStore cookieStore = new BasicCookieStore();
             cookieTool.loadCookie("search", "PC", cookieStore);
-            CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+            CloseableHttpClient httpClient = HttpClientFactory.getHttpClient(proxy);
             int pageTotal = 0;
             HttpGet httpGet = new HttpGet(refer);
             httpGet.addHeader("Referer", refer);
@@ -156,6 +151,9 @@ public class HttpCrawlerService implements CrawlerService {
             //第一页第一屏
             for (Element e : elements) {
                 position++;
+                if ("activity".equals(e.attr("data-type"))) {
+                    continue;
+                }
                 sb.append(e.attr("data-pid")).append(",");
                 if (e.select("span[class=p-promo-flag]").isEmpty()) {
                     s++;
@@ -192,21 +190,31 @@ public class HttpCrawlerService implements CrawlerService {
                 }
             }
             //第一页第二屏
-            httpClient = HttpClientFactory.getHttpClient();
+            httpClient = HttpClientFactory.getHttpClient(proxy);
             Map<String, String> header = new HashMap<>();
             header.put("Cookie", cookieTool.getCookieStr(cookieStore));
             header.put("Host", "search.jd.com");
             header.put("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
-            String urlStr = url + "&page=" + 2 + "&s=" + s;
+            header.put("pragma", "no-cache");
+            header.put("cache-control", "no-cache");
+            header.put(":authority", "search.jd.com");
+            header.put(":method", "GET");
+            long time = System.currentTimeMillis();
+            String pagePath = path + "&page=2&s=" + s + "&scrolling=y&log_id=" + time / 1000 + ".21074";
             if (!(sb.length() == 0)) {
-                urlStr = urlStr + "&show_items=" + sb.substring(0, sb.length() - 1);
+                pagePath = pagePath + "&show_items=" + sb.substring(0, sb.length() - 1);
             }
+            header.put(":path", pagePath);
+            String urlStr = host + pagePath;
             result = get(urlStr, refer, requestConfig, httpClient, header);
             document = Jsoup.parse(result);
             sb = new StringBuilder();
             elements = document.select("li[class~=gl-item]");
             for (Element e : elements) {
                 position++;
+                if ("activity".equals(e.attr("data-type"))) {
+                    continue;
+                }
                 sb.append(e.attr("data-pid")).append(",");
                 if (e.select("span[class=p-promo-flag]").isEmpty()) {
                     s++;
@@ -248,17 +256,25 @@ public class HttpCrawlerService implements CrawlerService {
                 int page = i;
                 position = 0;
                 for (int j = 1; j <= 2; j++) {
-                    httpClient = HttpClientFactory.getHttpClient();
-                    urlStr = url + "&page=" + (i * 2 + j) + "&s=" + s;
-                    if (!(sb.length() == 0)) {
-                        urlStr = urlStr + "&show_items=" + sb.substring(0, sb.length() - 1);
+                    httpClient = HttpClientFactory.getHttpClient(proxy);
+                    int p = i * 2 + j;
+                    pagePath = path + "&page=" + p + "&s=" + s + "&log_id=" + time / 1000 + ".21074";
+                    if (j == 1) {
+                        pagePath = pagePath + "&click=0";
+                    } else {
+                        pagePath = pagePath + "&scrolling=y" + "&show_items=" + sb.substring(0, sb.length() - 1);
                     }
+                    header.put(":path", pagePath);
+                    urlStr = host + pagePath;
                     result = get(urlStr, refer, requestConfig, httpClient, header);
                     document = Jsoup.parse(result);
                     sb = new StringBuilder();
                     elements = document.select("li[class~=gl-item]");
                     for (Element e : elements) {
                         position++;
+                        if ("activity".equals(e.attr("data-type"))) {
+                            continue;
+                        }
                         sb.append(e.attr("data-pid")).append(",");
                         if (e.select("span[class=p-promo-flag]").isEmpty()) {
                             s++;
@@ -748,7 +764,6 @@ public class HttpCrawlerService implements CrawlerService {
     }
 
 
-
     public void crawlSkuDetail(final SearchResult searchResult) {
         String sku = searchResult.getSku();
         String url = "https://item.jd.com/" + sku + ".html";
@@ -783,15 +798,16 @@ public class HttpCrawlerService implements CrawlerService {
 
     public String crawlSkuPrice(final String sku) {
 
-        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+        CloseableHttpClient httpClient = HttpClientFactory.getHttpClient(proxyService.getRandomProxy());
         HttpGet httpGet = new HttpGet("https://p.3.cn/prices/mgets?callback=jQuery2244087&type=1&area=15_1213_3411_52667&pdtk=&pduid=15102037407391075657148&pdpin=meixi7891&pin=meixi7891&pdbp=0&skuIds=J_" + sku + "&ext=11000000&source=item-pc");
         httpGet.addHeader("Referer", "https://item.jd.com/5618804.html");
         httpGet.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Safari/537.36");
         httpGet.setConfig(requestConfig);
+        String result = "";
         try {
             CloseableHttpResponse response = httpClient.execute(httpGet);
             Pattern p = Pattern.compile("\\(.*\\);");
-            String result = HttpUtil.readResponse(response);
+            result = HttpUtil.readResponse(response);
             Matcher matcher = p.matcher(result);
             if (matcher.find()) {
                 String json = matcher.group().replace("(", "").replace(");", "");
@@ -799,6 +815,7 @@ public class HttpCrawlerService implements CrawlerService {
                 return jsonArray.getJSONObject(0).getString("p");
             }
         } catch (Exception e) {
+            LOGGER.error("crawl sku price error , result : " + result);
             LOGGER.error("", e);
         }
         return "";
@@ -904,7 +921,7 @@ public class HttpCrawlerService implements CrawlerService {
             if (matcher.find()) {
                 shopId = matcher.group(1);
             }
-            CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
+            CloseableHttpClient httpClient = HttpClientFactory.getHttpClient(proxyService.getRandomProxy());
             HttpGet httpGet = new HttpGet("https://cd.jd.com/promotion/v2?callback=jQuery3149880&skuId=" + sku + "&area=15_1213_3411_52667&shopId=" + shopId + "&venderId=" + venderId + "&cat=" + URLEncoder.encode(catId, "utf-8") + "&isCanUseDQ=isCanUseDQ-1&isCanUseJQ=isCanUseJQ-1&platform=0&orgType=2&jdPrice=" + price + "&_=" + System.currentTimeMillis());
             CookieStore cookieStore = new BasicCookieStore();
             cookieTool.loadCookie("search", "PC", cookieStore);
@@ -967,6 +984,7 @@ public class HttpCrawlerService implements CrawlerService {
                 }
             }
         } catch (Exception e) {
+            LOGGER.error("crawl promotion error, sku : " + sku);
             LOGGER.error("", e);
         }
         return promotion;

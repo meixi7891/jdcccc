@@ -168,7 +168,6 @@ public class DmpService {
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(10000).setConnectionRequestTimeout(10000)
                 .setSocketTimeout(10000).build();
-
         CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();
         try {
             HttpPost httpPost = new HttpPost("https://jzt.jd.com/dmp/new/tag/portrait/and/estimate");

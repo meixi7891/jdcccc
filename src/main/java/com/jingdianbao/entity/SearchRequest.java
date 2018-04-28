@@ -18,8 +18,12 @@ public class SearchRequest {
 
     private String priceHigh = "";
 
+    private String startPage = "";
 
-    public SearchRequest(String type, String source, String keyword, String sku, String sortType, String shop,String priceLow , String priceHigh) {
+    private String endPage = "";
+
+
+    public SearchRequest(String type, String source, String keyword, String sku, String sortType, String shop,String priceLow , String priceHigh,String startPage,String endPage) {
         this.type = type;
         this.source = source;
         this.keyword = keyword;
@@ -28,6 +32,8 @@ public class SearchRequest {
         this.shop = shop;
         this.priceLow = priceLow;
         this.priceHigh = priceHigh;
+        this.startPage = startPage;
+        this.endPage = endPage;
     }
 
     public SearchRequest() {
@@ -95,5 +101,21 @@ public class SearchRequest {
 
     public void setPriceHigh(String priceHigh) {
         this.priceHigh = priceHigh;
+    }
+
+    public String getStartPage() {
+        return startPage;
+    }
+
+    public void setStartPage(String startPage) {
+        this.startPage = startPage;
+    }
+
+    public String getEndPage() {
+        return endPage;
+    }
+
+    public void setEndPage(String endPage) {
+        this.endPage = endPage;
     }
 }
