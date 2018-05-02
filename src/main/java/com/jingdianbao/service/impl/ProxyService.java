@@ -78,7 +78,7 @@ public class ProxyService {
 
 
     @PostConstruct
-    @Scheduled(cron = "0 */30 * * * ?")
+    @Scheduled(cron = "0 0 */3 * * ?")
     private void loadProxy() {
         try {
             CloseableHttpClient httpClient = HttpClientFactory.getHttpClient();

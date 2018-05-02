@@ -57,7 +57,8 @@ public class CrawlerController {
                              @RequestParam(value = "sortType", required = false, defaultValue = "") String sortType,
                              @RequestParam(value = "shop", required = false, defaultValue = "") String shop,
                              @RequestParam(value = "priceStart", required = false, defaultValue = "") String priceStart,
-                             @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd, @RequestParam(value = "priceStart", required = false, defaultValue = "") String pageStart,
+                             @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd,
+                             @RequestParam(value = "priceStart", required = false, defaultValue = "") String pageStart,
                              @RequestParam(value = "priceEnd", required = false, defaultValue = "") String pageEnd) {
 
         SearchRequest request = new SearchRequest(type, source, keyword, sku, sortType, shop, priceStart, priceEnd, pageStart, pageEnd);
@@ -71,6 +72,20 @@ public class CrawlerController {
             LOGGER.error("", e);
             jsonObject.put("code", -1);
             jsonObject.put("message", "抓取失败");
+        }
+        int startPage = 1;
+        int endPage = 100;
+        if (pageStart != null && Pattern.matches("\\d+", pageStart)) {
+            startPage = Integer.parseInt(pageStart);
+        }
+        if (pageEnd != null && Pattern.matches("\\d+", pageEnd)) {
+            endPage = Integer.parseInt(pageEnd);
+        }
+        for (int i = resultList.size() - 1; i >= 0; i--) {
+            SearchResult searchResult = resultList.get(i);
+            if (searchResult.getPage() < startPage || searchResult.getPage() > endPage) {
+                resultList.remove(i);
+            }
         }
         jsonObject.put("result", resultList);
         return jsonObject;
