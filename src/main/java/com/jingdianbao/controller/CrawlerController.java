@@ -58,8 +58,8 @@ public class CrawlerController {
                              @RequestParam(value = "shop", required = false, defaultValue = "") String shop,
                              @RequestParam(value = "priceStart", required = false, defaultValue = "") String priceStart,
                              @RequestParam(value = "priceEnd", required = false, defaultValue = "") String priceEnd,
-                             @RequestParam(value = "priceStart", required = false, defaultValue = "") String pageStart,
-                             @RequestParam(value = "priceEnd", required = false, defaultValue = "") String pageEnd) {
+                             @RequestParam(value = "pageStart", required = false, defaultValue = "") String pageStart,
+                             @RequestParam(value = "pageEnd", required = false, defaultValue = "") String pageEnd) {
 
         SearchRequest request = new SearchRequest(type, source, keyword, sku, sortType, shop, priceStart, priceEnd, pageStart, pageEnd);
         List<SearchResult> resultList = new ArrayList<>();
